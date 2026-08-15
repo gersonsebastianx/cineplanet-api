@@ -111,11 +111,14 @@
     flex:0 0 auto;background:transparent;color:var(--ink);
     border:1px solid var(--line);font-weight:450;padding:17px 18px;
   }
-  .cta.segunda small{display:block;font-size:11px;color:var(--ink-3);letter-spacing:.02em;
-    text-transform:uppercase;margin-bottom:2px}
+  .cta.segunda small{font-size:11px;color:var(--ink-3);letter-spacing:.02em;
+    text-transform:uppercase;margin-bottom:3px}
   .cta.primera{flex:1;min-width:0}
+  /* Flex, no block: el primario se estira a la altura del secundario y sin esto
+     su texto queda pegado arriba en vez de al medio. */
   .cta{
-    position:relative;overflow:hidden;display:block;padding:17px 20px;
+    position:relative;overflow:hidden;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;padding:17px 20px;
     border-radius:18px;color:#fff;text-align:center;text-decoration:none;
     font-size:16px;font-weight:600;letter-spacing:-.015em;
     background:linear-gradient(115deg,var(--g1),var(--g2) 40%,var(--g3) 76%,var(--g4));
@@ -385,7 +388,7 @@ function tarjeta(r) {
   card.append(ctas);
 
   card.append(el('div', 'nota', r.mapa
-    ? `${r.mapa.libres} de ${r.mapa.total} butacas libres · eliges asientos y pagas en Cineplanet · tienes 5 minutos desde que abres`
+    ? `${r.mapa.libres} de ${r.mapa.total} butacas libres · eliges asientos y pagas allá · tienes 5 minutos desde que abres Cineplanet`
     : 'Eliges asientos y pagas en Cineplanet'));
 
   if (r.otras.length) {
