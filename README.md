@@ -81,6 +81,37 @@ las butacas que la web nombra `E8` y `E7` son exactamente las que calcula
 
 ---
 
+## La web conversacional
+
+Una página donde se escribe la frase completa y sale la función con su mapa de
+butacas y el enlace de compra. Pensada para compartir por WhatsApp: quien la
+abre no instala nada.
+
+```bash
+npm start        # http://localhost:3000
+```
+
+> «quiero comprar entradas a Toy Story hoy entre las 4 y 6 en el real plaza salaverry»
+
+**Sin modelos de lenguaje.** El vocabulario es cerrado —las películas en
+cartelera y los 41 cines— así que [`src/parser.js`](src/parser.js) compara
+contra esas listas. Es exacto, instantáneo, gratis y no alucina. Sólo fechas y
+horas son reglas: `hoy`, `mañana`, `el sábado`, `entre las 4 y 6`,
+`después de las 8`, `en la noche`.
+
+**Nunca contesta sólo "no hay".** Si la ventana pedida está vacía, ensancha por
+pasos y dice qué cambió: primero la hora, después el día, y si la película ya
+termina antes de la fecha pedida, ofrece la última función. Esa es la mitad del
+producto.
+
+**Termina en Cineplanet.** La web resuelve la frase y entrega el enlace; los
+asientos y el pago ocurren allá. No se piden ni se guardan datos personales.
+
+Necesita servidor: la API de Cineplanet exige cookie de servidor y no manda
+cabeceras CORS, así que un frontend puro no puede llamarla.
+
+---
+
 ## El cliente
 
 ```bash
