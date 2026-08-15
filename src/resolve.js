@@ -4,7 +4,7 @@
 // vacía, se ensancha por pasos y se dice qué se cambió — eso es lo que hace que
 // la conversación sirva en vez de frustrar.
 
-import { movies, cinemas, showtimes } from './catalog.js';
+import { movies, cinemas, showtimes, nearest } from './catalog.js';
 import { seatMap, bestBlocks } from './seatmap.js';
 import { parse, limaToday } from './parser.js';
 
@@ -12,6 +12,22 @@ const MISSING = {
   movie: 'No reconocí la película. ¿Cuál quieres ver?',
   cinema: '¿En qué cine? Dime el distrito o el nombre del Cineplanet.',
 };
+
+const titulo = (s) => (s ?? '').replace(/\b\w/g, (c) => c.toUpperCase());
+
+/**
+ * Lo mínimo que hay que recordar del turno anterior para encadenar la charla.
+ * Sólo identificadores: el objeto de la película arrastra todas sus funciones y
+ * el contexto viaja en cada pedido.
+ */
+const recordar = (i) => ({
+  movieId: i.movie?.id ?? null,
+  cinemaId: i.cinema?.id ?? null,
+  date: i.date,
+  from: i.from,
+  to: i.to,
+  seats: i.seats,
+});
 
 const nowMinutesLima = () => {
   const d = new Date(Date.now() - 5 * 3600 * 1000);
@@ -39,12 +55,61 @@ const stillSellable = (list, today) => {
  * Resuelve una frase contra la cartelera real.
  * @returns {Promise<object>} respuesta con `estado` y lo necesario para mostrarla
  */
-export async function resolve(text, { today = limaToday() } = {}) {
+export async function resolve(text, { today = limaToday(), contexto = null } = {}) {
   const [movieList, cinemaList] = await Promise.all([movies(), cinemas()]);
-  const intent = parse(text, { movies: movieList, cinemas: cinemaList, today });
+  const fresco = parse(text, { movies: movieList, cinemas: cinemaList, today });
 
-  if (!intent.movie) return { estado: 'falta', pregunta: MISSING.movie, intent };
-  if (!intent.cinema) return { estado: 'falta', pregunta: MISSING.cinema, intent };
+  // Una conversación acumula: "La Odisea" y después "en Barranco" son una sola
+  // intención. Lo nuevo pisa lo viejo; lo que no se mencionó, se hereda.
+  const previo = contexto
+    ? {
+        movie: movieList.find((m) => m.id === contexto.movieId) ?? null,
+        cinema: cinemaList.find((c) => c.id === contexto.cinemaId) ?? null,
+      }
+    : null;
+  const intent = contexto
+    ? {
+        ...fresco,
+        movie: fresco.movie ?? previo.movie,
+        // Nombrar un distrito nuevo descarta la sede anterior: cambió de idea.
+        cinema: fresco.cinema ?? (fresco.district ? null : previo.cinema),
+        date: fresco.date ?? contexto.date ?? null,
+        from: fresco.from ?? contexto.from ?? null,
+        to: fresco.to ?? contexto.to ?? null,
+        seats: fresco.seats ?? contexto.seats ?? null,
+      }
+    : fresco;
+
+  if (!intent.movie) {
+    return { estado: 'falta', pregunta: MISSING.movie, intent, contexto: recordar(intent) };
+  }
+
+  // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.
+  if (!intent.cinema && intent.districtCoords) {
+    const cerca = nearest(cinemaList, intent.districtCoords, 3);
+    return {
+      estado: 'elige-cine',
+      pregunta: `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
+      opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km })),
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+
+  // Varias sedes empatadas: preguntar es más rápido que mandar a la equivocada.
+  if (intent.cinemaOptions) {
+    return {
+      estado: 'elige-cine',
+      pregunta: '¿Cuál de estos?',
+      opciones: intent.cinemaOptions.slice(0, 5).map((c) => ({ id: c.id, nombre: c.name, ciudad: c.city })),
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+
+  if (!intent.cinema) {
+    return { estado: 'falta', pregunta: MISSING.cinema, intent, contexto: recordar(intent) };
+  }
 
   const all = stillSellable(
     await showtimes({ movie: intent.movie, cinemaIds: [intent.cinema.id] }),
@@ -55,6 +120,7 @@ export async function resolve(text, { today = limaToday() } = {}) {
       estado: 'sin-cartelera',
       mensaje: `${intent.movie.title} no tiene funciones en ${intent.cinema.name} en los próximos días.`,
       intent,
+      contexto: recordar(intent),
     };
   }
 
@@ -102,6 +168,7 @@ export async function resolve(text, { today = limaToday() } = {}) {
       estado: 'sin-cartelera',
       mensaje: `${intent.movie.title} no tiene más funciones en ${intent.cinema.name}.`,
       intent,
+      contexto: recordar(intent),
     };
   }
 
@@ -132,6 +199,7 @@ export async function resolve(text, { today = limaToday() } = {}) {
   return {
     estado: 'ok',
     ajuste,
+    contexto: recordar(intent),
     pedido: {
       pelicula: intent.movie.title,
       cine: intent.cinema.name,

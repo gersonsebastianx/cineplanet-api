@@ -35,6 +35,35 @@ const WORD_NUMBERS = {
   siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12,
 };
 
+// Distritos de Lima que la gente nombra pero que no tienen Cineplanet propio, o
+// cuyo nombre no coincide con el de la sede. Sirven para ofrecer el más cercano
+// en vez de responder que no existe.
+export const DISTRICTS = {
+  barranco: [-12.1465, -77.0206],
+  miraflores: [-12.1211, -77.0296],
+  surco: [-12.1355, -76.9936],
+  'santiago de surco': [-12.1355, -76.9936],
+  'san isidro': [-12.0972, -77.0365],
+  'jesus maria': [-12.0741, -77.0492],
+  lince: [-12.0862, -77.0364],
+  magdalena: [-12.0906, -77.0729],
+  'pueblo libre': [-12.0748, -77.0631],
+  surquillo: [-12.1122, -77.0155],
+  chorrillos: [-12.1747, -77.0189],
+  'la victoria': [-12.0669, -77.0158],
+  brena: [-12.0589, -77.0503],
+  rimac: [-12.0281, -77.0294],
+  ate: [-12.0261, -76.9186],
+  callao: [-12.0566, -77.1181],
+  'la perla': [-12.0689, -77.1036],
+  bellavista: [-12.0611, -77.1069],
+  independencia: [-11.9889, -77.0553],
+  'los olivos': [-11.9739, -77.0703],
+  'san martin de porres': [-12.0261, -77.0808],
+  chosica: [-11.9403, -76.6975],
+  barranca: [-10.7503, -77.7614],
+};
+
 /** Fecha de hoy en horario de Lima, como YYYY-MM-DD. */
 export function limaToday() {
   return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
@@ -48,6 +77,11 @@ const addDays = (iso, n) => {
 
 const weekdayOf = (iso) => new Date(`${iso}T12:00:00Z`).getUTCDay();
 
+const nowMinutesLima = () => {
+  const d = new Date(Date.now() - 5 * 3600 * 1000);
+  return d.getUTCHours() * 60 + d.getUTCMinutes();
+};
+
 function parseDate(text, today) {
   const t = norm(text);
   if (/pasado\s+manana/.test(t)) return { date: addDays(today, 2), said: 'pasado mañana' };
@@ -55,7 +89,14 @@ function parseDate(text, today) {
   if (/\bmanana\b/.test(t) && !/(por|en|de)\s+la\s+manana/.test(t)) {
     return { date: addDays(today, 1), said: 'mañana' };
   }
-  if (/\bhoy\b|\besta\s+noche\b|\besta\s+tarde\b/.test(t)) return { date: today, said: 'hoy' };
+  if (/\bhoy\b|\besta\s+noche\b|\besta\s+tarde\b|\bahorita\b|\bmas\s+tarde\b/.test(t)) {
+    return { date: today, said: 'hoy' };
+  }
+  // "el fin de semana" = el próximo sábado, que es cuando la gente va al cine.
+  if (/\bfin\s+de\s+semana\b/.test(t)) {
+    const delta = (6 - weekdayOf(today) + 7) % 7 || 7;
+    return { date: addDays(today, delta), said: 'el fin de semana' };
+  }
 
   const dayName = DAYS.find((d) => new RegExp(`\\b${d}\\b`).test(t));
   if (dayName) {
@@ -127,27 +168,61 @@ function parseTime(text) {
     return { from: minutes - 45, to: minutes + 45, said: `cerca de las ${at[1]}` };
   }
 
+  // Horas relativas: "más tarde" y "ahorita" se leen contra el reloj, no contra
+  // el calendario. Sin esto la frase se ignora y la respuesta parece sorda.
+  if (/\b(mas\s+tarde|luego|despues)\b/.test(t)) {
+    return { from: nowMinutesLima() + 30, to: 24 * 60, said: 'más tarde' };
+  }
+  if (/\b(ahorita|ahora|ya mismo|lo antes posible)\b/.test(t)) {
+    return { from: nowMinutesLima(), to: nowMinutesLima() + 180, said: 'ahora' };
+  }
+  if (/\b(al\s+)?mediodia\b/.test(t)) return { from: 11 * 60, to: 14 * 60, said: 'al mediodía' };
   if (/\b(en|por)\s+la\s+manana\b/.test(t)) return { from: 0, to: 12 * 60, said: 'en la mañana' };
-  if (/\b(en|por|esta)\s+la?\s*tarde\b|\bde\s+tarde\b/.test(t)) {
+  // "esta noche" no lleva artículo; exigirlo dejaba la frase sin franja horaria.
+  if (/\b(en|por|esta|de)\s+(la\s+)?tarde\b/.test(t)) {
     return { from: 12 * 60, to: 19 * 60, said: 'en la tarde' };
   }
-  if (/\b(en|por|esta)\s+la?\s*noche\b|\bde\s+noche\b/.test(t)) {
+  if (/\b(en|por|esta|de)\s+(la\s+)?noche\b/.test(t)) {
     return { from: 19 * 60, to: 24 * 60, said: 'en la noche' };
   }
   return { from: null, to: null, said: null };
 }
 
+/** Distancia de edición acotada: perdona un tipeo, no inventa coincidencias. */
+function closeEnough(a, b) {
+  if (Math.abs(a.length - b.length) > 1 || a.length < 5) return false;
+  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  for (let i = 1; i <= a.length; i++) {
+    let prev = d[0];
+    d[0] = i;
+    for (let j = 1; j <= b.length; j++) {
+      const tmp = d[j];
+      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
+      prev = tmp;
+    }
+  }
+  return d[b.length] <= 1;
+}
+
+// Palabras que aparecen en tantos nombres de cine que por sí solas no eligen
+// ninguno: "real plaza" está en seis sedes, "maria" en dos distritos distintos.
+const WEAK_VENUE = new Set(['real', 'plaza', 'mall', 'centro', 'norte', 'sur', 'maria', 'santa', 'san', 'villa', 'del', 'jr', 'union', 'parque']);
+
 /** Puntúa por tokens distintivos compartidos: "real plaza salaverry" → CP Salaverry. */
-function bestByTokens(text, candidates, label) {
+function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {}) {
   const list = tokens(text);
   const want = new Set(list);
   if (!want.size) return null;
   const glued = list.join('');
-  let best = null;
+  const scored = [];
   for (const item of candidates) {
     const have = tokens(label(item));
     if (!have.length) continue;
     let hits = have.filter((w) => want.has(w));
+    // Un tipeo no debería costar la búsqueda: "la odicea" sigue siendo La Odisea.
+    if (!hits.length) {
+      hits = have.filter((w) => list.some((q) => closeEnough(q, w)));
+    }
     // "spiderman" pegado debe encontrar "Spider man Un nuevo dia": se comparan
     // sin espacios, en ambos sentidos, con largo mínimo para no unir cualquier cosa.
     const haveGlued = have.join('');
@@ -155,11 +230,19 @@ function bestByTokens(text, candidates, label) {
       if (glued.includes(haveGlued) || haveGlued.startsWith(glued)) hits = have;
     }
     if (!hits.length) continue;
+    // Sólo palabras distintivas eligen sede: si no, "jesús maría" termina en
+    // Villa María del Triunfo, que es otro distrito y otra punta de la ciudad.
+    if (weak && hits.every((w) => weak.has(w))) continue;
     // Premia cubrir el nombre completo; así "toy story" no pierde con "toy".
     const score = hits.length / have.length + hits.length * 0.1;
-    if (!best || score > best.score) best = { item, score, hits };
+    if (score >= minScore) scored.push({ item, score, hits });
   }
-  return best;
+  scored.sort((a, b) => b.score - a.score);
+  if (!scored.length) return null;
+  // Empate real = pregunta, no adivinanza: "real plaza" son seis sedes.
+  const top = scored[0];
+  top.tied = scored.filter((s) => s.score >= top.score - 0.01).map((s) => s.item);
+  return top;
 }
 
 /**
@@ -168,7 +251,15 @@ function bestByTokens(text, candidates, label) {
  * @param {{movies: Array, cinemas: Array, today?: string}} catalog
  */
 export function parse(text, { movies, cinemas, today = limaToday() }) {
-  const cinemaHit = bestByTokens(text, cinemas, (c) => c.name);
+  const cinemaHit = bestByTokens(text, cinemas, (c) => c.name, {
+    weak: WEAK_VENUE,
+    minScore: 0.45,
+  });
+  // Un distrito sin sede propia igual dice dónde está la persona.
+  const t = norm(text);
+  const district = Object.keys(DISTRICTS)
+    .filter((d) => new RegExp(`\\b${d}\\b`).test(t))
+    .sort((a, b) => b.length - a.length)[0] ?? null;
   const { date, said: dateSaid } = parseDate(text, today);
   const { from, to, said: timeSaid } = parseTime(text);
 
@@ -184,13 +275,20 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     new RegExp(`\\b${w}\\s+(personas?|entradas?|boletos?|butacas?|asientos?)\\b`).test(norm(text)),
   );
 
+  // "para mí y mi novia" son dos, aunque no diga ningún número.
+  const pareja = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/.test(norm(text));
+
   return {
     movie: movieHit?.item ?? null,
     cinema: cinemaHit?.item ?? null,
+    // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
+    cinemaOptions: cinemaHit && cinemaHit.tied.length > 1 ? cinemaHit.tied : null,
+    district,
+    districtCoords: district ? { lat: DISTRICTS[district][0], lon: DISTRICTS[district][1] } : null,
     date,
     from,
     to,
-    seats: people ? +people[1] : worded ? worded[1] : null,
+    seats: people ? +people[1] : worded ? worded[1] : pareja ? 2 : null,
     said: { date: dateSaid, time: timeSaid },
   };
 }

@@ -63,11 +63,14 @@ const server = createServer(async (req, res) => {
       return json(res, 429, { estado: 'error', mensaje: 'Demasiadas consultas seguidas. Espera un momento.' });
     }
     try {
-      const { texto } = JSON.parse(await readBody(req));
+      const { texto, contexto } = JSON.parse(await readBody(req));
       if (typeof texto !== 'string' || !texto.trim()) {
         return json(res, 400, { estado: 'error', mensaje: 'Escribe qué quieres ver.' });
       }
-      return json(res, 200, await resolveQuery(texto.slice(0, 300)));
+      // El contexto lo guarda el navegador, así el servidor no necesita sesiones.
+      return json(res, 200, await resolveQuery(texto.slice(0, 300), {
+        contexto: contexto && typeof contexto === 'object' ? contexto : null,
+      }));
     } catch (err) {
       const caido = /cookie de sesión|rechazó/.test(err.message);
       return json(res, caido ? 503 : 500, {

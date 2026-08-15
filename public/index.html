@@ -49,6 +49,9 @@
   .cta{display:block;margin-top:14px;padding:13px;border-radius:12px;background:var(--blue);
     color:#fff;text-align:center;font-weight:600;text-decoration:none}
   .nota{margin-top:8px;font-size:12px;color:var(--muted);text-align:center}
+  .opciones{align-self:flex-start;display:flex;gap:6px;flex-wrap:wrap;max-width:min(560px,100%)}
+  .opciones button{background:var(--card);border:1px solid var(--line);color:var(--blue);
+    font-size:13px;font-weight:500;padding:9px 14px;border-radius:999px}
   .otras{margin-top:12px;border-top:1px solid var(--line);padding-top:10px;font-size:13px}
   .otras a{color:var(--blue);text-decoration:none;margin-right:12px;white-space:nowrap;display:inline-block;padding:3px 0}
   form{display:flex;gap:8px;padding:10px 16px calc(14px + env(safe-area-inset-bottom));
@@ -89,6 +92,8 @@ const chat = document.getElementById('chat');
 const form = document.getElementById('form');
 const texto = document.getElementById('texto');
 const enviar = document.getElementById('enviar');
+// El hilo de la conversación vive acá: sin esto, "en Barranco" llega huérfano.
+let contexto = null;
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -179,7 +184,20 @@ function tarjeta(r) {
 }
 
 function responder(r) {
+  if (r.contexto) contexto = r.contexto;
   if (r.estado === 'falta') return decir(r.pregunta);
+  if (r.estado === 'elige-cine') {
+    decir(r.pregunta);
+    const fila = el('div', 'opciones');
+    for (const o of r.opciones) {
+      const b = el('button', null, o.km != null ? `${o.nombre} · ${o.km} km` : `${o.nombre}${o.ciudad ? ` · ${o.ciudad}` : ''}`);
+      b.type = 'button';
+      b.addEventListener('click', () => consultar(o.nombre));
+      fila.append(b);
+    }
+    chat.append(fila);
+    return abajo();
+  }
   if (r.estado === 'sin-cartelera' || r.estado === 'error') return decir(r.mensaje);
 
   const p = r.pedido;
@@ -208,7 +226,7 @@ async function consultar(valor) {
     const res = await fetch('/api/consulta', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ texto: valor }),
+      body: JSON.stringify({ texto: valor, contexto }),
     });
     datos = await res.json();
   } catch {
