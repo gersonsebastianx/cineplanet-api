@@ -102,7 +102,9 @@ export async function anotar(datos) {
       // Sin esto, un token mal copiado o un script sin publicar fallan en
       // silencio: la consulta responde bien y la hoja se queda vacía.
       const cuerpo = (await res.text()).slice(0, 200);
-      if (!res.ok || !cuerpo.includes('"ok":true')) {
+      // Se busca "escrito", no "ok": doGet también responde ok y así una
+      // redirección que convierta el POST en GET pasaría por éxito.
+      if (!res.ok || !cuerpo.includes('"escrito":true')) {
         console.error(
           JSON.stringify({ t: 'bitacora-rechazo', status: res.status, respuesta: cuerpo }),
         );

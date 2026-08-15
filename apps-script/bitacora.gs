@@ -40,9 +40,11 @@ function doPost(e) {
 
     SpreadsheetApp.getActiveSpreadsheet().getSheets()[0].appendRow(fila);
 
-    return ContentService.createTextOutput(JSON.stringify({ ok: true })).setMimeType(
-      ContentService.MimeType.JSON,
-    );
+    // "escrito" sólo lo devuelve este camino. Si la respuesta llegara desde
+    // doGet —porque una redirección convirtió el POST en GET— se notaría.
+    return ContentService.createTextOutput(
+      JSON.stringify({ ok: true, escrito: true }),
+    ).setMimeType(ContentService.MimeType.JSON);
   } catch (err) {
     return ContentService.createTextOutput(
       JSON.stringify({ ok: false, error: String(err) }),
@@ -53,6 +55,6 @@ function doPost(e) {
 /** Para comprobar desde el navegador que la implementación está viva. */
 function doGet() {
   return ContentService.createTextOutput(
-    JSON.stringify({ ok: true, mensaje: 'bitácora en pie' }),
+    JSON.stringify({ ok: true, escrito: false, mensaje: 'bitácora en pie' }),
   ).setMimeType(ContentService.MimeType.JSON);
 }
