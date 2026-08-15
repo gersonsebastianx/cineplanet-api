@@ -110,6 +110,9 @@ function parseDate(text, today) {
 function to24(hour, text, position) {
   if (hour >= 13) return hour;
   const after = norm(text).slice(position);
+  // "7pm" y "7 de la noche" mandan sobre cualquier suposición.
+  if (/^\s*(pm|p m)\b/.test(after)) return hour === 12 ? 12 : hour + 12;
+  if (/^\s*(am|a m)\b/.test(after)) return hour === 12 ? 0 : hour;
   if (/^\s*(de|en|por)\s+la\s+manana/.test(after) || /\bde\s+la\s+manana\b/.test(after)) {
     return hour;
   }
@@ -120,11 +123,21 @@ function to24(hour, text, position) {
 function parseTime(text) {
   const t = norm(text);
 
-  const between = /\bentre\s+(?:las?\s+)?(\d{1,2})(?::(\d{2}))?\s*(?:y|a)\s*(?:las?\s+)?(\d{1,2})(?::(\d{2}))?/.exec(t);
+  // "entre 4 y 6", "de 5 a 7pm", "desde las 5 hasta las 7": la misma idea dicha
+  // de tres maneras, y la gente usa las tres.
+  const between =
+    /\b(?:entre|de|desde)\s+(?:las?\s+)?(\d{1,2})(?::(\d{2}))?\s*(?:am|pm)?\s*(?:y|a|hasta)\s*(?:las?\s+)?(\d{1,2})(?::(\d{2}))?/.exec(t);
   if (between) {
     const end = between.index + between[0].length;
-    const from = to24(+between[1], t, end) * 60 + (+between[2] || 0);
-    const to = to24(+between[3], t, end) * 60 + (+between[4] || 0);
+    // El sufijo va al final ("de 5 a 7pm"), pero aplica a las dos horas.
+    let to = to24(+between[3], t, end) * 60 + (+between[4] || 0);
+    let from = to24(+between[1], t, end) * 60 + (+between[2] || 0);
+    // Un rango invertido significa que una de las dos se leyó en la mitad
+    // equivocada del día: "de 10 a 12 am" es 10:00–12:00, no 10:00–00:00.
+    if (to <= from) {
+      if (to + 12 * 60 <= 24 * 60) to += 12 * 60;
+      else from -= 12 * 60;
+    }
     return { from, to, said: `entre las ${between[1]} y ${between[3]}` };
   }
 

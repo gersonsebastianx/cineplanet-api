@@ -106,8 +106,16 @@
   .legend span{display:flex;align-items:center;gap:6px}
   .legend i{width:11px;height:11px;border-radius:50%;display:block}
 
+  .ctas{display:flex;gap:10px;margin-top:22px;align-items:stretch}
+  .cta.segunda{
+    flex:0 0 auto;background:transparent;color:var(--ink);
+    border:1px solid var(--line);font-weight:450;padding:17px 18px;
+  }
+  .cta.segunda small{display:block;font-size:11px;color:var(--ink-3);letter-spacing:.02em;
+    text-transform:uppercase;margin-bottom:2px}
+  .cta.primera{flex:1;min-width:0}
   .cta{
-    position:relative;overflow:hidden;display:block;margin-top:22px;padding:17px 20px;
+    position:relative;overflow:hidden;display:block;padding:17px 20px;
     border-radius:18px;color:#fff;text-align:center;text-decoration:none;
     font-size:16px;font-weight:600;letter-spacing:-.015em;
     background:linear-gradient(115deg,var(--g1),var(--g2) 40%,var(--g3) 76%,var(--g4));
@@ -161,11 +169,24 @@
   }
   input::placeholder{color:var(--ink-3)}
   input:focus{outline:none;border-color:var(--ink-3)}
+  /* Vidrio sobre el gradiente: un velo translúcido, un borde de luz arriba y
+     una sombra corta abajo. Es lo que hace que el botón se sienta un objeto. */
   #enviar{
-    position:relative;overflow:hidden;width:52px;height:52px;flex:none;border:0;
-    border-radius:50%;cursor:pointer;color:var(--sky-ink);background:var(--sky);
-    transition:transform .18s cubic-bezier(.2,.7,.3,1),opacity .18s;
+    position:relative;overflow:hidden;width:54px;height:54px;flex:none;border:0;
+    border-radius:50%;cursor:pointer;color:#fff;
+    background:linear-gradient(135deg,var(--g1),var(--g2) 44%,var(--g3) 80%,var(--g4));
+    box-shadow:0 4px 14px -4px color-mix(in srgb,var(--g2) 55%,transparent),
+               inset 0 1px 0 rgba(255,255,255,.55),
+               inset 0 -1px 2px rgba(0,0,0,.18);
+    transition:transform .18s cubic-bezier(.2,.7,.3,1),box-shadow .18s,opacity .18s;
   }
+  #enviar::after{
+    content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;
+    background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.06) 46%,rgba(255,255,255,0) 62%);
+    backdrop-filter:blur(6px) saturate(150%);-webkit-backdrop-filter:blur(6px) saturate(150%);
+  }
+  #enviar:hover{box-shadow:0 6px 18px -4px color-mix(in srgb,var(--g2) 65%,transparent),
+               inset 0 1px 0 rgba(255,255,255,.6),inset 0 -1px 2px rgba(0,0,0,.18)}
   #enviar:active{transform:scale(.93)}
   #enviar:disabled{opacity:.4}
   #enviar svg{position:relative;display:block;margin:auto}
@@ -275,6 +296,17 @@ function mapaHtml(mapa, elegidas) {
   return cont;
 }
 
+/** Deja marcadas exactamente estas butacas en el mapa de la tarjeta. */
+function marcar(card, ids) {
+  const quiero = new Set(ids);
+  card.querySelectorAll('.s').forEach((s) => {
+    if (s.classList.contains('acc') || s.classList.contains('taken')) return;
+    const debe = quiero.has(s.title);
+    s.classList.toggle('pick', debe);
+    s.classList.toggle('free', !debe);
+  });
+}
+
 function tarjeta(r) {
   const card = el('div', 'card');
   const f = r.funcion;
@@ -310,18 +342,13 @@ function tarjeta(r) {
     card.append(leyenda);
   }
 
-  const cta = el('a', 'cta');
-  const etiqueta = el('b', null, elegidas.size ? `Ir a comprar · ${[...elegidas].join(' y ')}` : 'Ir a comprar');
-  cta.append(etiqueta);
-  cta.href = f.link;
-  cta.target = '_blank';
-  cta.rel = 'noopener';
+  const bloques = r.mapa?.sugeridas ?? [];
 
   if (r.preguntarGrupo) {
     const grupo = el('div', 'grupo');
-    grupo.append(el('p', null, '¿Con cuántas personas vas? Ajusto las butacas.'));
+    grupo.append(el('p', null, '¿Para cuántas entradas? Ajusto las butacas.'));
     const fila = el('div', 'alts');
-    for (const [txt, n] of [['Solo', 1], ['En pareja', 2], ['Grupo de 4', 4]]) {
+    for (const [txt, n] of [['Una', 1], ['Dos', 2], ['Cuatro', 4]]) {
       const b = el('button', 'alt', txt);
       b.type = 'button';
       b.addEventListener('click', () => consultar(`para ${n} personas`));
@@ -331,35 +358,31 @@ function tarjeta(r) {
     card.append(grupo);
   }
 
-  // Con la sala holgada hay varias opciones buenas; elegir butaca es parte de ir
-  // al cine, así que se ofrecen en vez de imponer una.
-  if (r.mapa && r.mapa.sugeridas.length > 1) {
-    const alts = el('div', 'alts');
-    r.mapa.sugeridas.forEach((bloque, i) => {
-      const b = el('button', 'alt', `Fila ${bloque.row} · ${bloque.seats.join(', ')}`);
-      b.type = 'button';
-      b.setAttribute('aria-pressed', String(i === 0));
-      b.addEventListener('click', () => {
-        alts.querySelectorAll('.alt').forEach((x) => x.setAttribute('aria-pressed', 'false'));
-        b.setAttribute('aria-pressed', 'true');
-        const nuevas = new Set(bloque.seats);
-        card.querySelectorAll('.s').forEach((s) => {
-          if (s.classList.contains('acc')) return;
-          const era = s.classList.contains('pick');
-          const ahora = nuevas.has(s.title);
-          if (era === ahora) return;
-          s.classList.toggle('pick', ahora);
-          s.classList.toggle('free', !ahora);
-        });
-        etiqueta.textContent = `Ir a comprar · ${bloque.seats.join(' y ')}`;
-      });
-      alts.append(b);
-    });
-    card.append(alts);
-  }
+  // Dos botones juntos: el primario lleva la mejor butaca, el secundario la que
+  // le sigue. Elegir entre dos es inmediato; entre cinco ya es una tarea.
+  const ctas = el('div', 'ctas');
+  const principal = el('a', 'cta primera');
+  const etiqueta = el('b', null, elegidas.size ? `Ir a comprar · ${[...elegidas].join(' y ')}` : 'Ir a comprar');
+  principal.append(etiqueta);
+  principal.href = f.link;
+  principal.target = '_blank';
+  principal.rel = 'noopener';
+  ctas.append(principal);
+  granular(principal);
 
-  card.append(cta);
-  granular(cta);
+  if (bloques.length > 1) {
+    const alterna = bloques[1];
+    const segunda = el('a', 'cta segunda');
+    segunda.append(el('small', null, 'Otra opción'), el('b', null, alterna.seats.join(' y ')));
+    segunda.href = f.link;
+    segunda.target = '_blank';
+    segunda.rel = 'noopener';
+    // Al pasar por encima se marca en el mapa: así se ve de qué butacas habla.
+    segunda.addEventListener('mouseenter', () => marcar(card, alterna.seats));
+    segunda.addEventListener('mouseleave', () => marcar(card, [...elegidas]));
+    ctas.append(segunda);
+  }
+  card.append(ctas);
 
   card.append(el('div', 'nota', r.mapa
     ? `${r.mapa.libres} de ${r.mapa.total} butacas libres · eliges asientos y pagas en Cineplanet · tienes 5 minutos desde que abres`

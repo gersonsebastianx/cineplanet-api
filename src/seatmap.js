@@ -64,11 +64,19 @@ export async function seatMap(cinemaId, sessionId) {
 
 /**
  * Bloques contiguos de `size` butacas libres, mejores primero.
- * Prioriza filas centrales y butacas centradas respecto a la pantalla.
+ *
+ * La zona buena de una sala está **detrás del centro y al medio a lo ancho**:
+ * en una sala de doce filas, la E, F y G. Las primeras filas obligan a mirar
+ * hacia arriba y los extremos laterales deforman la imagen, así que ambos se
+ * penalizan fuerte — no basta con preferir el centro, hay que castigar el borde.
+ *
+ * Los bloques devueltos **no se solapan entre sí**: si comparten butacas no son
+ * alternativas, son la misma zona corrida un asiento.
  */
 export function bestBlocks(map, size = 2, limit = 5) {
   const nRows = map.rows.length;
-  const middleRow = (nRows - 1) / 2;
+  // El punto dulce está al 62% de profundidad: ni pegado a la pantalla ni al fondo.
+  const filaIdeal = (nRows - 1) * 0.62;
   const blocks = [];
 
   map.rows.forEach((row, rowIndex) => {
@@ -77,20 +85,43 @@ export function bestBlocks(map, size = 2, limit = 5) {
       const run = free.slice(i, i + size);
       const contiguous = run.every((s, k) => k === 0 || s.x === run[k - 1].x + 1);
       if (!contiguous) continue;
+
       const centerX = run.reduce((a, s) => a + s.x, 0) / size;
-      const offCenter = Math.abs(centerX - (row.width - 1) / 2) / Math.max(1, row.width / 2);
-      // La zona dulce está algo detrás del centro de la sala.
-      const offRow = Math.abs(rowIndex - middleRow * 1.15) / Math.max(1, nRows / 2);
+      const offCenter = Math.abs(centerX - (row.width - 1) / 2) / Math.max(1, (row.width - 1) / 2);
+      const offRow = Math.abs(rowIndex - filaIdeal) / Math.max(1, nRows - 1);
+
+      // Cuadrático: alejarse un poco casi no cuesta, alejarse mucho sí.
+      let score = 100 - offCenter ** 2 * 70 - offRow ** 2 * 120;
+      // Las dos primeras filas son incómodas aunque estén perfectamente al centro.
+      if (rowIndex <= 1) score -= 25;
+      // El 15% más lateral de la fila, también.
+      if (offCenter > 0.7) score -= 15;
+
       blocks.push({
         row: row.label,
         seats: run.map((s) => s.id),
         numbers: run.map((s) => s.number),
-        score: +(100 - offCenter * 45 - offRow * 40).toFixed(1),
+        score: +score.toFixed(1),
       });
     }
   });
 
-  return blocks.sort((a, b) => b.score - a.score).slice(0, limit);
+  blocks.sort((a, b) => b.score - a.score);
+
+  // Alternativas de verdad: sin butacas compartidas, y variando de fila mientras
+  // se pueda, para que la segunda opción se sienta distinta y no corrida.
+  const elegidos = [];
+  const usadas = new Set();
+  for (const pasada of [true, false]) {
+    for (const b of blocks) {
+      if (elegidos.length >= limit) break;
+      if (b.seats.some((s) => usadas.has(s))) continue;
+      if (pasada && elegidos.some((e) => e.row === b.row)) continue;
+      elegidos.push(b);
+      b.seats.forEach((s) => usadas.add(s));
+    }
+  }
+  return elegidos;
 }
 
 /** Página HTML autocontenida con el mapa, en los colores de Cineplanet. */
