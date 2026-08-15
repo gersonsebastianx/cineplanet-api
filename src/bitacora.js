@@ -91,11 +91,22 @@ export async function anotar(datos) {
 
     // Camino corto: el Apps Script de la propia hoja.
     if (process.env.BITACORA_URL) {
-      await fetch(process.env.BITACORA_URL, {
+      const res = await fetch(process.env.BITACORA_URL, {
         method: 'POST',
-        headers: { 'content-type': 'application/json' },
+        // Apps Script responde 302 hacia googleusercontent y con JSON la
+        // redirección pierde el cuerpo; con texto plano acepta el POST directo.
+        headers: { 'content-type': 'text/plain;charset=utf-8' },
         body: JSON.stringify({ token: process.env.BITACORA_TOKEN ?? '', fila }),
+        redirect: 'follow',
       });
+      // Sin esto, un token mal copiado o un script sin publicar fallan en
+      // silencio: la consulta responde bien y la hoja se queda vacía.
+      const cuerpo = (await res.text()).slice(0, 200);
+      if (!res.ok || !cuerpo.includes('"ok":true')) {
+        console.error(
+          JSON.stringify({ t: 'bitacora-rechazo', status: res.status, respuesta: cuerpo }),
+        );
+      }
       return;
     }
 
