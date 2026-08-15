@@ -7,8 +7,13 @@
 // Sin dependencias: el token se firma con `node:crypto` y se cambia por uno de
 // acceso con `fetch`. Si faltan las credenciales, no hace nada y no molesta.
 //
-// Variables de entorno necesarias:
-//   GOOGLE_SA_EMAIL   correo de la cuenta de servicio
+// Hay dos maneras de llegar a la hoja, y basta con una:
+//
+//   BITACORA_URL      la más simple: un Apps Script publicado como web app
+//   BITACORA_TOKEN    palabra compartida con ese script, para que no escriba
+//                     cualquiera que descubra la URL
+//
+//   GOOGLE_SA_EMAIL   la otra: cuenta de servicio de Google Cloud
 //   GOOGLE_SA_KEY     su clave privada (el PEM completo)
 //   SHEET_ID          id de la hoja, compartida con ese correo como editor
 
@@ -18,6 +23,7 @@ const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
 const activo = () =>
+  !!process.env.BITACORA_URL ||
   !!(process.env.GOOGLE_SA_EMAIL && process.env.GOOGLE_SA_KEY && process.env.SHEET_ID);
 
 const b64url = (buf) =>
@@ -58,24 +64,41 @@ async function accessToken() {
   return token.valor;
 }
 
+/** La fila tal como queda en la hoja, en el orden de los encabezados. */
+function armarFila(datos) {
+  const { sesion, texto, respuesta } = { ...datos };
+  return [
+    new Date().toISOString(),
+    sesion ?? '',
+    texto.slice(0, 200),
+    respuesta.estado,
+    respuesta.pedido?.pelicula ?? respuesta.intent?.movie?.title ?? '',
+    respuesta.pedido?.cine ?? respuesta.intent?.cinema?.name ?? '',
+    respuesta.funcion ? `${respuesta.funcion.fechaTexto} ${respuesta.funcion.hora}` : '',
+    respuesta.ajuste ?? '',
+    respuesta.pregunta ?? respuesta.mensaje ?? '',
+  ];
+}
+
 /**
  * Agrega una fila. Nunca lanza: una bitácora rota no debe tumbar una consulta.
  * @param {object} datos { sesion, texto, respuesta }
  */
-export async function anotar({ sesion, texto, respuesta }) {
+export async function anotar(datos) {
   if (!activo()) return;
   try {
-    const fila = [
-      new Date().toISOString(),
-      sesion ?? '',
-      texto.slice(0, 200),
-      respuesta.estado,
-      respuesta.pedido?.pelicula ?? respuesta.intent?.movie?.title ?? '',
-      respuesta.pedido?.cine ?? respuesta.intent?.cinema?.name ?? '',
-      respuesta.funcion ? `${respuesta.funcion.fechaTexto} ${respuesta.funcion.hora}` : '',
-      respuesta.ajuste ?? '',
-      respuesta.pregunta ?? respuesta.mensaje ?? '',
-    ];
+    const fila = armarFila(datos);
+
+    // Camino corto: el Apps Script de la propia hoja.
+    if (process.env.BITACORA_URL) {
+      await fetch(process.env.BITACORA_URL, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ token: process.env.BITACORA_TOKEN ?? '', fila }),
+      });
+      return;
+    }
+
     const url =
       `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEET_ID}` +
       `/values/A:I:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;

@@ -160,18 +160,25 @@ Los logs del plan gratuito duran poco. Para acumular historial,
 Google, con el identificador de sesión al lado: filtrando por esa columna se lee
 la conversación completa; filtrando por estado se ven de golpe las que fallaron.
 
-Se activa sola cuando existen las tres variables, y si faltan no hace nada:
+Hay dos caminos y basta con uno. Si faltan las variables, no hace nada.
+
+**El corto** — un Apps Script dentro de la propia hoja
+([`apps-script/bitacora.gs`](apps-script/bitacora.gs), con las instrucciones
+adentro). Sin Google Cloud y sin claves: el script ya corre con permiso sobre la
+hoja. Se publica como aplicación web y quedan dos variables:
 
 | Variable | De dónde sale |
 |---|---|
-| `GOOGLE_SA_EMAIL` | Correo de una cuenta de servicio de Google Cloud |
-| `GOOGLE_SA_KEY` | Su clave privada, el PEM completo |
-| `SHEET_ID` | El id de la hoja, en su URL |
+| `BITACORA_URL` | La URL de la implementación, termina en `/exec` |
+| `BITACORA_TOKEN` | Una palabra cualquiera, la misma que dentro del script |
 
-Pasos: crear la cuenta de servicio en Google Cloud, habilitar la API de Google
-Sheets, crear la hoja y **compartirla como editor con el correo de la cuenta de
-servicio**. Sin ese último paso Google responde 403 aunque las credenciales sean
-correctas.
+La implementación se publica como "cualquier usuario", pero el script rechaza
+todo lo que no traiga el token: sin él responde y no toca la hoja.
+
+**El largo** — cuenta de servicio de Google Cloud, con `GOOGLE_SA_EMAIL`,
+`GOOGLE_SA_KEY` y `SHEET_ID`. Hay que habilitar la API de Google Sheets y
+**compartir la hoja como editor con el correo de la cuenta de servicio**; sin ese
+último paso Google responde 403 aunque las credenciales sean correctas.
 
 El identificador de sesión es un número al azar que vive en la pestaña del
 navegador y muere al cerrarla. No identifica a nadie.
