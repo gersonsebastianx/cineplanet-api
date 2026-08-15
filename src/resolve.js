@@ -287,15 +287,23 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
       .map((id) => cinemaList.find((c) => c.id === id))
       .filter(Boolean);
     if (sedes.length) {
-      // Sin ubicación, la sede con más funciones es la apuesta más razonable.
-      const cuantas = new Map();
-      for (const s of conFuncion) cuantas.set(s.cinemaId, (cuantas.get(s.cinemaId) ?? 0) + 1);
-      const orden = intent.districtCoords
-        ? nearest(sedes, intent.districtCoords, 4)
-        : [...sedes].sort((a, b) => (cuantas.get(b.id) ?? 0) - (cuantas.get(a.id) ?? 0)).slice(0, 4);
+      // Sin saber dónde está la persona, ofrecer sedes es adivinar: la más
+      // popular puede quedarle a dos horas. Mejor preguntar una vez y usarlo
+      // para el resto de la conversación.
+      if (!intent.districtCoords) {
+        return {
+          estado: 'falta',
+          pregunta: `${intent.movie.title} está en ${sedes.length} ${
+            sedes.length === 1 ? 'cine' : 'cines'
+          }. ¿En qué distrito o provincia estás?`,
+          intent,
+          contexto: recordar(intent),
+        };
+      }
+      const orden = nearest(sedes, intent.districtCoords, 4);
       return {
         estado: 'elige-cine',
-        pregunta: `¿En cuál? ${intent.movie.title} está en:`,
+        pregunta: `${intent.movie.title} está en:`,
         opciones: orden.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
         intent,
         contexto: recordar(intent),
