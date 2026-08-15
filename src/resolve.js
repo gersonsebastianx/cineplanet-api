@@ -177,11 +177,15 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   let mapa = null;
   try {
     const map = await seatMap(elegida.cinemaId, elegida.sessionId);
+    // Con la sala medio vacía hay de dónde elegir, así que se ofrecen varias
+    // opciones en vez de una sola: elegir butaca es parte del gusto de ir.
+    const holgada = map.total > 0 && map.free / map.total >= 0.6;
     mapa = {
       sala: map.screen,
       libres: map.free,
       total: map.total,
-      sugeridas: bestBlocks(map, asientos, 3),
+      holgada,
+      sugeridas: bestBlocks(map, asientos, holgada ? 3 : 1),
       filas: map.rows.map((r) => ({
         fila: r.label,
         ancho: r.width,
@@ -200,6 +204,9 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     estado: 'ok',
     ajuste,
     contexto: recordar(intent),
+    // Sólo se pregunta con quién va cuando no lo dijo y la sala da opciones:
+    // preguntar sobre una sala llena sería hacerle perder el tiempo.
+    preguntarGrupo: intent.seats == null && !!mapa?.holgada,
     pedido: {
       pelicula: intent.movie.title,
       cine: intent.cinema.name,

@@ -9,7 +9,7 @@
 //   PORT=8080 node server.js
 
 import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath, extname, normalize } from 'node:path';
 import { resolve as resolveQuery } from './src/resolve.js';
@@ -28,6 +28,34 @@ const TYPES = {
 // Una consulta dispara varias llamadas a Cineplanet; conviene no exigirles de más.
 const RATE = { windowMs: 60_000, max: 20 };
 const hits = new Map();
+
+// Qué busca la gente, para sugerirlo a quien llega sin historial propio. Se
+// cuenta película + cine ya resueltos, nunca la frase cruda ni quién la escribió.
+const POPULARES = resolvePath(ROOT, '.cache', 'populares.json');
+let populares = {};
+try {
+  populares = JSON.parse(await readFile(POPULARES, 'utf8'));
+} catch {
+  populares = {};
+}
+
+let guardando = null;
+function contar(respuesta) {
+  const p = respuesta?.pedido;
+  if (!p?.pelicula || !p?.cine) return;
+  const clave = `${p.pelicula} en ${p.cine}`;
+  populares[clave] = (populares[clave] ?? 0) + 1;
+  clearTimeout(guardando);
+  guardando = setTimeout(() => {
+    writeFile(POPULARES, JSON.stringify(populares)).catch(() => {});
+  }, 2000);
+}
+
+const masBuscadas = (n = 3) =>
+  Object.entries(populares)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, n)
+    .map(([texto]) => texto);
 
 function allowed(ip) {
   const now = Date.now();
@@ -68,9 +96,11 @@ const server = createServer(async (req, res) => {
         return json(res, 400, { estado: 'error', mensaje: 'Escribe qué quieres ver.' });
       }
       // El contexto lo guarda el navegador, así el servidor no necesita sesiones.
-      return json(res, 200, await resolveQuery(texto.slice(0, 300), {
+      const respuesta = await resolveQuery(texto.slice(0, 300), {
         contexto: contexto && typeof contexto === 'object' ? contexto : null,
-      }));
+      });
+      contar(respuesta);
+      return json(res, 200, respuesta);
     } catch (err) {
       const caido = /cookie de sesión|rechazó/.test(err.message);
       return json(res, caido ? 503 : 500, {
@@ -80,6 +110,10 @@ const server = createServer(async (req, res) => {
           : 'No pude resolver esa consulta.',
       });
     }
+  }
+
+  if (req.method === 'GET' && url.pathname === '/api/populares') {
+    return json(res, 200, { populares: masBuscadas(3) });
   }
 
   if (req.method !== 'GET') return json(res, 405, { estado: 'error', mensaje: 'Método no permitido' });
@@ -98,6 +132,8 @@ const server = createServer(async (req, res) => {
     res.end('No encontrado');
   }
 });
+
+await mkdir(resolvePath(ROOT, '.cache'), { recursive: true }).catch(() => {});
 
 server.listen(PORT, () => {
   console.log(`Cineplanet conversacional en http://localhost:${PORT}`);

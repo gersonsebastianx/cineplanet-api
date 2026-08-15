@@ -11,6 +11,7 @@
     --paper:#f1ecea; --card:#fbf9f8; --ink:#0d0b0a; --ink-2:#6f6763; --ink-3:#a49b96;
     --line:#e2dbd7; --rose:#e8607a; --ring:#0d0b0a;
     --g1:#4d3df7; --g2:#c13584; --g3:#f5643b; --g4:#fcaf45;
+    --sky:#a5d8ef; --sky-ink:#0a3d55;
     --r:26px;
     /* Serif con carácter para los títulos, sans neutra para todo lo que se
        opera. El contraste es lo que hace que se sienta hecho a mano. */
@@ -20,6 +21,7 @@
     :root{
       --paper:#0f0d0c; --card:#181514; --ink:#f6f2f0; --ink-2:#a79f9a; --ink-3:#6f6763;
       --line:#2a2523; --rose:#f07a90; --ring:#f6f2f0;
+      --sky:#8ac6e0; --sky-ink:#08293a;
     }
   }
   *{box-sizing:border-box}
@@ -121,6 +123,17 @@
   .otras a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line);
     margin-right:14px;display:inline-block;padding-bottom:1px}
 
+  .alts{display:flex;gap:8px;flex-wrap:wrap;margin-top:18px}
+  .alt{
+    background:transparent;border:1px solid var(--line);color:var(--ink-2);
+    font-size:13px;letter-spacing:-.01em;padding:9px 14px;border-radius:999px;cursor:pointer;
+    transition:border-color .18s,color .18s,background .18s;
+  }
+  .alt:hover{border-color:var(--ink-3);color:var(--ink)}
+  .alt[aria-pressed="true"]{border-color:transparent;color:#fff;
+    background:linear-gradient(135deg,var(--g1),var(--g2) 45%,var(--g3) 82%,var(--g4))}
+  .grupo{margin-top:18px;padding-top:16px;border-top:1px solid var(--line)}
+  .grupo p{margin:0 0 10px;font-size:14px;color:var(--ink-2);letter-spacing:-.01em}
   .opciones{align-self:flex-start;display:flex;gap:8px;flex-wrap:wrap;max-width:min(520px,100%)}
   .opciones button{
     background:var(--card);border:1px solid var(--line);color:var(--ink);
@@ -150,8 +163,7 @@
   input:focus{outline:none;border-color:var(--ink-3)}
   #enviar{
     position:relative;overflow:hidden;width:52px;height:52px;flex:none;border:0;
-    border-radius:50%;cursor:pointer;color:#fff;
-    background:linear-gradient(135deg,var(--g1),var(--g2) 44%,var(--g3) 80%,var(--g4));
+    border-radius:50%;cursor:pointer;color:var(--sky-ink);background:var(--sky);
     transition:transform .18s cubic-bezier(.2,.7,.3,1),opacity .18s;
   }
   #enviar:active{transform:scale(.93)}
@@ -190,10 +202,7 @@
   <div class="bot msg">Dime la película, el cine y cuándo. Por ejemplo: «quiero ver Toy Story hoy entre 4 y 6 en el Real Plaza Salaverry».</div>
 </main>
 
-<div class="ejemplos" id="ejemplos">
-  <button type="button">La Odisea mañana en la tarde en Salaverry</button>
-  <button type="button">Toy Story hoy en Trujillo</button>
-</div>
+<div class="ejemplos" id="ejemplos" aria-label="Sugerencias"></div>
 
 <form id="form">
   <div class="campo">
@@ -302,10 +311,53 @@ function tarjeta(r) {
   }
 
   const cta = el('a', 'cta');
-  cta.append(el('b', null, elegidas.size ? `Ir a comprar · ${[...elegidas].join(' y ')}` : 'Ir a comprar'));
+  const etiqueta = el('b', null, elegidas.size ? `Ir a comprar · ${[...elegidas].join(' y ')}` : 'Ir a comprar');
+  cta.append(etiqueta);
   cta.href = f.link;
   cta.target = '_blank';
   cta.rel = 'noopener';
+
+  if (r.preguntarGrupo) {
+    const grupo = el('div', 'grupo');
+    grupo.append(el('p', null, '¿Con cuántas personas vas? Ajusto las butacas.'));
+    const fila = el('div', 'alts');
+    for (const [txt, n] of [['Solo', 1], ['En pareja', 2], ['Grupo de 4', 4]]) {
+      const b = el('button', 'alt', txt);
+      b.type = 'button';
+      b.addEventListener('click', () => consultar(`para ${n} personas`));
+      fila.append(b);
+    }
+    grupo.append(fila);
+    card.append(grupo);
+  }
+
+  // Con la sala holgada hay varias opciones buenas; elegir butaca es parte de ir
+  // al cine, así que se ofrecen en vez de imponer una.
+  if (r.mapa && r.mapa.sugeridas.length > 1) {
+    const alts = el('div', 'alts');
+    r.mapa.sugeridas.forEach((bloque, i) => {
+      const b = el('button', 'alt', `Fila ${bloque.row} · ${bloque.seats.join(', ')}`);
+      b.type = 'button';
+      b.setAttribute('aria-pressed', String(i === 0));
+      b.addEventListener('click', () => {
+        alts.querySelectorAll('.alt').forEach((x) => x.setAttribute('aria-pressed', 'false'));
+        b.setAttribute('aria-pressed', 'true');
+        const nuevas = new Set(bloque.seats);
+        card.querySelectorAll('.s').forEach((s) => {
+          if (s.classList.contains('acc')) return;
+          const era = s.classList.contains('pick');
+          const ahora = nuevas.has(s.title);
+          if (era === ahora) return;
+          s.classList.toggle('pick', ahora);
+          s.classList.toggle('free', !ahora);
+        });
+        etiqueta.textContent = `Ir a comprar · ${bloque.seats.join(' y ')}`;
+      });
+      alts.append(b);
+    });
+    card.append(alts);
+  }
+
   card.append(cta);
   granular(cta);
 
@@ -382,7 +434,11 @@ async function consultar(valor) {
     enviar.disabled = false;
     texto.focus();
   }
-  if (datos) responder(datos);
+  if (datos) {
+    responder(datos);
+    recordarBusqueda(datos);
+    pintarSugerencias();
+  }
 }
 
 form.addEventListener('submit', (e) => {
@@ -391,9 +447,53 @@ form.addEventListener('submit', (e) => {
   if (valor) consultar(valor);
 });
 
-document.getElementById('ejemplos').addEventListener('click', (e) => {
+const ejemplos = document.getElementById('ejemplos');
+ejemplos.addEventListener('click', (e) => {
   if (e.target.tagName === 'BUTTON') consultar(e.target.textContent);
 });
+
+const HISTORIAL = 'cineplanet:historial';
+
+/** Lo que uno mismo buscó vale más que lo que busca el resto. */
+function recordarBusqueda(r) {
+  const p = r?.pedido;
+  if (!p?.pelicula || !p?.cine) return;
+  try {
+    const previo = JSON.parse(localStorage.getItem(HISTORIAL) ?? '[]');
+    const texto = `${p.pelicula} en ${p.cine}`;
+    const lista = [texto, ...previo.filter((x) => x !== texto)].slice(0, 8);
+    localStorage.setItem(HISTORIAL, JSON.stringify(lista));
+  } catch {
+    // Navegación privada o almacenamiento lleno: se sigue sin historial.
+  }
+}
+
+async function pintarSugerencias() {
+  let propias = [];
+  try {
+    propias = JSON.parse(localStorage.getItem(HISTORIAL) ?? '[]');
+  } catch {
+    propias = [];
+  }
+  let lista = propias.slice(0, 3);
+  if (!lista.length) {
+    try {
+      const res = await fetch('/api/populares');
+      lista = (await res.json()).populares ?? [];
+    } catch {
+      lista = [];
+    }
+  }
+  // Sin historial propio ni ajeno, hay que sugerir algo para empezar.
+  if (!lista.length) lista = ['La Odisea mañana en la tarde en Salaverry', 'Toy Story hoy en Trujillo'];
+  ejemplos.replaceChildren();
+  for (const t of lista) {
+    const b = el('button', null, t);
+    b.type = 'button';
+    ejemplos.append(b);
+  }
+}
+pintarSugerencias();
 </script>
 </body>
 </html>
