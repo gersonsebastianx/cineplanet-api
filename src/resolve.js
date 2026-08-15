@@ -54,6 +54,38 @@ function sayDate(iso, today) {
   return `el ${DAY_NAMES[d.getUTCDay()]} ${d.getUTCDate()}`;
 }
 
+/**
+ * Películas del mismo género que sí tienen funciones. Cuando la pedida no está,
+ * ofrecer parecidas es más útil que una lista al azar de la cartelera.
+ */
+async function mismoGenero(pelicula, movieList, cinemaId, today) {
+  const candidatas = movieList.filter(
+    (m) => m.id !== pelicula?.id && m.genre && m.genre === pelicula?.genre,
+  );
+  const con = [];
+  for (const m of candidatas) {
+    const f = stillSellable(
+      await showtimes({ movie: m, cinemaIds: cinemaId ? [cinemaId] : undefined }),
+      today,
+    );
+    if (f.length) con.push({ titulo: m.title, funciones: f.length });
+  }
+  return con.sort((a, b) => b.funciones - a.funciones).slice(0, 4);
+}
+
+/** Lo que más se está dando, para cuando no hay género del cual guiarse. */
+async function loMasDado(movieList, cinemaId, today, limite = 6) {
+  const con = [];
+  for (const m of movieList) {
+    const f = stillSellable(
+      await showtimes({ movie: m, cinemaIds: cinemaId ? [cinemaId] : undefined }),
+      today,
+    );
+    if (f.length) con.push({ titulo: m.title, funciones: f.length });
+  }
+  return con.sort((a, b) => b.funciones - a.funciones).slice(0, limite);
+}
+
 /** Descarta funciones que ya empezaron si el día es hoy. */
 const stillSellable = (list, today) => {
   const now = nowMinutesLima();
@@ -104,29 +136,22 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   // Nombró algo que no está en cartelera. Heredar la película del turno anterior
   // produce una respuesta segura y equivocada: preguntó por una y se le contesta
   // por otra. Mejor decir que no se encontró.
-  if (!fresco.movie && previo?.movie && fresco.sobrantes.length) {
+  if (!fresco.movie && fresco.sobrantes.length) {
     const dicho = fresco.sobrantes.join(' ');
-    const cine = intent.cinema;
-    if (cine) {
-      const dia = intent.date ?? today;
-      const enCartelera = [];
-      for (const m of movieList) {
-        const f = stillSellable(await showtimes({ movie: m, cinemaIds: [cine.id] }), today);
-        if (f.some((s) => s.date === dia)) enCartelera.push(m.title);
-      }
-      if (enCartelera.length) {
-        return {
-          estado: 'cartelera',
-          pregunta: `No encontré «${dicho}» en cartelera. En ${cine.name} ${cuandoTexto(dia, today)} dan:`,
-          opciones: enCartelera.slice(0, 8).map((t) => ({ nombre: t })),
-          intent,
-          contexto: recordar({ ...intent, movie: null }),
-        };
-      }
+    const enCartelera = await loMasDado(movieList, intent.cinema?.id, today);
+    const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
+    if (enCartelera.length) {
+      return {
+        estado: 'cartelera',
+        pregunta: `Lo siento, «${dicho}» no está en cartelera${donde}. Estas sí:`,
+        opciones: enCartelera.map((m) => ({ nombre: m.titulo })),
+        intent,
+        contexto: recordar({ ...intent, movie: null }),
+      };
     }
     return {
       estado: 'falta',
-      pregunta: `No encontré «${dicho}» en cartelera. ¿Cuál quieres ver?`,
+      pregunta: `Lo siento, «${dicho}» no está en cartelera. ¿Cuál quieres ver?`,
       intent,
       contexto: recordar({ ...intent, movie: null }),
     };
@@ -192,6 +217,29 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
       pregunta: `¿Qué quieres ver${donde}? Dime el nombre de la película.`,
       intent,
       contexto: recordar(intent),
+    };
+  }
+
+  // Antes de preguntar por la sede: si no tiene funciones en ningún lado, pedir
+  // un cine es hacerle perder el tiempo. Puede ser un estreno futuro o una que
+  // ya terminó su temporada, y son mensajes distintos.
+  const enTodoElPais = stillSellable(await showtimes({ movie: intent.movie }), today);
+  if (!enTodoElPais.length) {
+    const parecidas = await mismoGenero(intent.movie, movieList, null, today);
+    const alternativas = parecidas.length ? parecidas : await loMasDado(movieList, null, today);
+    const genero = intent.movie.genre?.toLowerCase();
+    return {
+      estado: 'cartelera',
+      pregunta: intent.movie.comingSoon
+        ? `${intent.movie.title} todavía no se estrena.${
+            parecidas.length ? ` Mientras tanto, de ${genero} sí hay:` : ' Esto sí está en cartelera:'
+          }`
+        : `Lo siento, ${intent.movie.title} ya no está en cartelera.${
+            parecidas.length ? ` De ${genero} sí hay:` : ' Esto sí:'
+          }`,
+      opciones: alternativas.map((m) => ({ nombre: m.titulo })),
+      intent,
+      contexto: recordar({ ...intent, movie: null }),
     };
   }
 
@@ -264,8 +312,7 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     // Decir "no la dan acá" y callarse es un callejón sin salida, teniendo la
     // lista de dónde sí la dan a un paso. La pregunta siguiente siempre es
     // "¿y dónde entonces?", así que se responde antes de que la hagan.
-    const enOtros = stillSellable(await showtimes({ movie: intent.movie }), today);
-    const sedes = [...new Set(enOtros.map((s) => s.cinemaId))]
+    const sedes = [...new Set(enTodoElPais.map((s) => s.cinemaId))]
       .map((id) => cinemaList.find((c) => c.id === id))
       .filter(Boolean);
     const cerca = sedes.length ? nearest(sedes, intent.cinema, 3) : [];
@@ -285,9 +332,12 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
         }),
       };
     }
+    // Inalcanzable en la práctica: si no tuviera funciones en ningún lado se
+    // habría respondido más arriba. Queda por si la cartelera cambia entre
+    // ambas consultas.
     return {
       estado: 'sin-cartelera',
-      mensaje: `${intent.movie.title} no tiene funciones en ningún Cineplanet en los próximos días.`,
+      mensaje: `${intent.movie.title} ya no tiene funciones.`,
       intent,
       contexto: recordar(intent),
     };
