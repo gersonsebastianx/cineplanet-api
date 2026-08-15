@@ -1,0 +1,18 @@
+{
+  "name": "cineplanet-api",
+  "version": "0.1.0",
+  "private": false,
+  "type": "module",
+  "bin": {
+    "cine": "./bin/cine.js"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "description": "Cliente y documentación de la API web de Cineplanet Perú",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/gersonsebastianx/cineplanet-api.git"
+  }
+}
