@@ -7,10 +7,16 @@
  *   1. Abrir la hoja → Extensiones → Apps Script.
  *   2. Pegar este archivo, reemplazando lo que haya.
  *   3. Cambiar TOKEN por una palabra cualquiera, larga y difícil de adivinar.
- *   4. Implementar → Nueva implementación → Aplicación web.
+ *   4. Configuración del proyecto (⚙️) → marcar "Mostrar el archivo de
+ *      manifiesto appsscript.json en el editor".
+ *   5. Abrir appsscript.json y reemplazarlo por el de esta misma carpeta. Ese
+ *      manifiesto acota el permiso a `spreadsheets.currentonly`: el script
+ *      queda limitado a la hoja que lo contiene y no puede tocar ninguna otra
+ *      del Drive. Sin él, Google pide acceso a **todas** las hojas de cálculo.
+ *   6. Implementar → Nueva implementación → Aplicación web.
  *        Ejecutar como:  Yo
  *        Quién tiene acceso:  Cualquier usuario
- *   5. Copiar la URL que termina en /exec.
+ *   7. Autorizar cuando Google lo pida, y copiar la URL que termina en /exec.
  *
  * Después, en Vercel: BITACORA_URL con esa URL y BITACORA_TOKEN con la palabra.
  *

@@ -165,7 +165,14 @@ Hay dos caminos y basta con uno. Si faltan las variables, no hace nada.
 **El corto** — un Apps Script dentro de la propia hoja
 ([`apps-script/bitacora.gs`](apps-script/bitacora.gs), con las instrucciones
 adentro). Sin Google Cloud y sin claves: el script ya corre con permiso sobre la
-hoja. Se publica como aplicación web y quedan dos variables:
+hoja.
+
+Va con [`apps-script/appsscript.json`](apps-script/appsscript.json), que acota
+el permiso a `spreadsheets.currentonly`. Importa: sin ese manifiesto Google pide
+acceso a **todas** las hojas de cálculo de la cuenta, y el script sólo necesita
+la suya.
+
+Se publica como aplicación web y quedan dos variables:
 
 | Variable | De dónde sale |
 |---|---|
