@@ -13,7 +13,10 @@ const MISSING = {
   cinema: '¿En qué cine? Dime el distrito o el nombre del Cineplanet.',
 };
 
+/** Nombres propios: cada palabra en mayúscula ("San Isidro"). */
 const titulo = (s) => (s ?? '').replace(/\b\w/g, (c) => c.toUpperCase());
+/** Frases: sólo la primera letra ("31 de febrero no existe"). */
+const frase = (s) => (s ?? '').charAt(0).toUpperCase() + (s ?? '').slice(1);
 
 /**
  * Lo mínimo que hay que recordar del turno anterior para encadenar la charla.
@@ -86,8 +89,50 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
       }
     : fresco;
 
+  // Lo que no se pudo usar se dice; ignorarlo en silencio es lo que hace que la
+  // respuesta parezca sorda.
+  if (intent.imposible) {
+    return {
+      estado: 'falta',
+      pregunta: `${frase(intent.imposible)}. ¿Para cuándo lo busco?`,
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+
   if (!intent.movie) {
-    return { estado: 'falta', pregunta: MISSING.movie, intent, contexto: recordar(intent) };
+    // "¿qué hay hoy en Salaverry?" es de lo más común que se pregunta, y la
+    // cartelera está a un paso: listarla es mejor que pedir un título que
+    // todavía no eligió.
+    if (intent.cinema) {
+      const dia = intent.date ?? today;
+      const enCartelera = [];
+      for (const m of movieList) {
+        const f = stillSellable(
+          await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
+          today,
+        );
+        const delDia = f.filter((s) => s.date === dia);
+        if (delDia.length) enCartelera.push({ titulo: m.title, funciones: delDia.length });
+      }
+      if (enCartelera.length) {
+        enCartelera.sort((a, b) => b.funciones - a.funciones);
+        return {
+          estado: 'cartelera',
+          pregunta: `En ${intent.cinema.name} ${dia === today ? 'hoy' : sayDate(dia, today)} dan:`,
+          opciones: enCartelera.slice(0, 8).map((m) => ({ nombre: m.titulo })),
+          intent,
+          contexto: recordar(intent),
+        };
+      }
+    }
+    const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
+    return {
+      estado: 'falta',
+      pregunta: `¿Qué quieres ver${donde}? Dime el nombre de la película.`,
+      intent,
+      contexto: recordar(intent),
+    };
   }
 
   // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.

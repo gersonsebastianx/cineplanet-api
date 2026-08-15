@@ -458,6 +458,18 @@ function tarjeta(r) {
 function responder(r) {
   if (r.contexto) contexto = r.contexto;
   if (r.estado === 'falta') return decir(r.pregunta);
+  if (r.estado === 'cartelera') {
+    decir(r.pregunta);
+    const fila = el('div', 'opciones');
+    for (const o of r.opciones) {
+      const b = el('button', null, o.nombre);
+      b.type = 'button';
+      b.addEventListener('click', () => consultar(o.nombre));
+      fila.append(b);
+    }
+    chat.append(fila);
+    return abajo();
+  }
   if (r.estado === 'elige-cine') {
     decir(r.pregunta);
     const fila = el('div', 'opciones');
