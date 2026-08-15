@@ -305,6 +305,19 @@ const texto = document.getElementById('texto');
 const enviar = document.getElementById('enviar');
 // El hilo de la conversación vive acá: sin esto, "en Barranco" llega huérfano.
 let contexto = null;
+// Identificador aleatorio de esta pestaña, sólo para agrupar los turnos de una
+// misma conversación en la bitácora. No identifica a nadie y muere al cerrarla.
+const sesion = (() => {
+  try {
+    const previo = sessionStorage.getItem('cineplanet:sesion');
+    if (previo) return previo;
+    const nuevo = Math.random().toString(36).slice(2, 10);
+    sessionStorage.setItem('cineplanet:sesion', nuevo);
+    return nuevo;
+  } catch {
+    return Math.random().toString(36).slice(2, 10);
+  }
+})();
 
 const el = (tag, cls, text) => {
   const n = document.createElement(tag);
@@ -543,7 +556,7 @@ async function consultar(valor) {
     const res = await fetch('/api/consulta', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ texto: valor, contexto }),
+      body: JSON.stringify({ texto: valor, contexto, sesion }),
     });
     datos = await res.json();
   } catch {

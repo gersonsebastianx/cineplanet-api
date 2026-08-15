@@ -1,0 +1,94 @@
+// Bitácora de consultas en una hoja de cálculo de Google.
+//
+// Una fila por turno, con el identificador de sesión al lado: filtrando por esa
+// columna se lee la conversación completa, y filtrando por estado se ven de
+// golpe todas las que fallaron. Eso es lo que sirve para arreglar el intérprete.
+//
+// Sin dependencias: el token se firma con `node:crypto` y se cambia por uno de
+// acceso con `fetch`. Si faltan las credenciales, no hace nada y no molesta.
+//
+// Variables de entorno necesarias:
+//   GOOGLE_SA_EMAIL   correo de la cuenta de servicio
+//   GOOGLE_SA_KEY     su clave privada (el PEM completo)
+//   SHEET_ID          id de la hoja, compartida con ese correo como editor
+
+import { createSign } from 'node:crypto';
+
+const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
+const TOKEN_URL = 'https://oauth2.googleapis.com/token';
+
+const activo = () =>
+  !!(process.env.GOOGLE_SA_EMAIL && process.env.GOOGLE_SA_KEY && process.env.SHEET_ID);
+
+const b64url = (buf) =>
+  Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+
+let token = null; // { valor, expira }
+
+async function accessToken() {
+  if (token && Date.now() < token.expira - 60_000) return token.valor;
+
+  const ahora = Math.floor(Date.now() / 1000);
+  const cabecera = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const cuerpo = b64url(
+    JSON.stringify({
+      iss: process.env.GOOGLE_SA_EMAIL,
+      scope: SCOPE,
+      aud: TOKEN_URL,
+      iat: ahora,
+      exp: ahora + 3600,
+    }),
+  );
+  // Las variables de entorno guardan los saltos de línea escapados.
+  const clave = process.env.GOOGLE_SA_KEY.replace(/\\n/g, '\n');
+  const firma = createSign('RSA-SHA256').update(`${cabecera}.${cuerpo}`).sign(clave);
+  const jwt = `${cabecera}.${cuerpo}.${b64url(firma)}`;
+
+  const res = await fetch(TOKEN_URL, {
+    method: 'POST',
+    headers: { 'content-type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams({
+      grant_type: 'urn:ietf:params:oauth:grant-type:jwt-bearer',
+      assertion: jwt,
+    }),
+  });
+  if (!res.ok) throw new Error(`Google rechazó las credenciales (${res.status})`);
+  const json = await res.json();
+  token = { valor: json.access_token, expira: Date.now() + json.expires_in * 1000 };
+  return token.valor;
+}
+
+/**
+ * Agrega una fila. Nunca lanza: una bitácora rota no debe tumbar una consulta.
+ * @param {object} datos { sesion, texto, respuesta }
+ */
+export async function anotar({ sesion, texto, respuesta }) {
+  if (!activo()) return;
+  try {
+    const fila = [
+      new Date().toISOString(),
+      sesion ?? '',
+      texto.slice(0, 200),
+      respuesta.estado,
+      respuesta.pedido?.pelicula ?? respuesta.intent?.movie?.title ?? '',
+      respuesta.pedido?.cine ?? respuesta.intent?.cinema?.name ?? '',
+      respuesta.funcion ? `${respuesta.funcion.fechaTexto} ${respuesta.funcion.hora}` : '',
+      respuesta.ajuste ?? '',
+      respuesta.pregunta ?? respuesta.mensaje ?? '',
+    ];
+    const url =
+      `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEET_ID}` +
+      `/values/A:I:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
+    await fetch(url, {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await accessToken()}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ values: [fila] }),
+    });
+  } catch (err) {
+    // Se deja rastro en los logs y se sigue: la consulta ya se respondió.
+    console.error(JSON.stringify({ t: 'bitacora-error', error: err.message }));
+  }
+}

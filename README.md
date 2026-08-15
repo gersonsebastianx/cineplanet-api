@@ -148,6 +148,34 @@ Dos cosas que el servidor necesita en producción y que no se notan en local:
 En el plan gratuito de Render el servicio duerme tras ~15 minutos sin visitas,
 así que la primera consulta después de un rato tarda cerca de un minuto.
 
+### Bitácora de consultas
+
+Cada consulta deja una línea JSON en los logs del hosting: estado, película y
+cine. Sin IP, sin identificador de persona, sin cookies. La frase cruda sólo se
+guarda cuando **no** se pudo resolver — es la que sirve para arreglar el
+intérprete, y sin ella los fallos son invisibles.
+
+Los logs del plan gratuito duran poco. Para acumular historial,
+[`src/bitacora.js`](src/bitacora.js) escribe una fila por turno en una hoja de
+Google, con el identificador de sesión al lado: filtrando por esa columna se lee
+la conversación completa; filtrando por estado se ven de golpe las que fallaron.
+
+Se activa sola cuando existen las tres variables, y si faltan no hace nada:
+
+| Variable | De dónde sale |
+|---|---|
+| `GOOGLE_SA_EMAIL` | Correo de una cuenta de servicio de Google Cloud |
+| `GOOGLE_SA_KEY` | Su clave privada, el PEM completo |
+| `SHEET_ID` | El id de la hoja, en su URL |
+
+Pasos: crear la cuenta de servicio en Google Cloud, habilitar la API de Google
+Sheets, crear la hoja y **compartirla como editor con el correo de la cuenta de
+servicio**. Sin ese último paso Google responde 403 aunque las credenciales sean
+correctas.
+
+El identificador de sesión es un número al azar que vive en la pestaña del
+navegador y muere al cerrarla. No identifica a nadie.
+
 ---
 
 ## El cliente

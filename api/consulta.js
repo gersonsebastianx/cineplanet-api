@@ -4,13 +4,14 @@
 // tibias la reutilizan porque el módulo queda en memoria entre invocaciones.
 
 import { resolve as resolveQuery } from '../src/resolve.js';
+import { anotar } from '../src/bitacora.js';
 
 export default async function handler(req, res) {
   if (req.method !== 'POST') {
     return res.status(405).json({ estado: 'error', mensaje: 'Método no permitido' });
   }
   try {
-    const { texto, contexto } = req.body ?? {};
+    const { texto, contexto, sesion } = req.body ?? {};
     if (typeof texto !== 'string' || !texto.trim()) {
       return res.status(400).json({ estado: 'error', mensaje: 'Escribe qué quieres ver.' });
     }
@@ -19,6 +20,7 @@ export default async function handler(req, res) {
     });
     contar(respuesta);
     registrar(texto, respuesta);
+    await anotar({ sesion, texto, respuesta });
     return res.status(200).json(respuesta);
   } catch (err) {
     const caido = /cookie de sesión|rechazó/.test(err.message);

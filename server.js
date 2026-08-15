@@ -13,6 +13,7 @@ import { readFile, writeFile, mkdir } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath, extname, normalize } from 'node:path';
 import { resolve as resolveQuery } from './src/resolve.js';
+import { anotar } from './src/bitacora.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = resolvePath(ROOT, 'public');
@@ -107,7 +108,7 @@ const server = createServer(async (req, res) => {
       return json(res, 429, { estado: 'error', mensaje: 'Demasiadas consultas seguidas. Espera un momento.' });
     }
     try {
-      const { texto, contexto } = JSON.parse(await readBody(req));
+      const { texto, contexto, sesion } = JSON.parse(await readBody(req));
       if (typeof texto !== 'string' || !texto.trim()) {
         return json(res, 400, { estado: 'error', mensaje: 'Escribe qué quieres ver.' });
       }
@@ -116,6 +117,7 @@ const server = createServer(async (req, res) => {
         contexto: contexto && typeof contexto === 'object' ? contexto : null,
       });
       contar(respuesta);
+      await anotar({ sesion, texto, respuesta });
       return json(res, 200, respuesta);
     } catch (err) {
       const caido = /cookie de sesión|rechazó/.test(err.message);
