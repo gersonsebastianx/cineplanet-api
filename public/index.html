@@ -5,72 +5,185 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>¿Qué quieres ver?</title>
 <style>
+  /* El color aparece una sola vez, en el gradiente. Todo lo demás es papel,
+     tinta y una línea de un pelo. Es lo que hace que el gradiente se note. */
   :root{
-    --bg:#f4f6fa; --card:#fff; --ink:#10233f; --muted:#6b7c96; --line:#dde4ee;
-    --blue:#104687; --blue-soft:#e8effa; --red:#e8394a; --pick:#1f5fd0;
+    --paper:#f1ecea; --card:#fbf9f8; --ink:#0d0b0a; --ink-2:#6f6763; --ink-3:#a49b96;
+    --line:#e2dbd7; --rose:#e8607a; --ring:#0d0b0a;
+    --g1:#4d3df7; --g2:#c13584; --g3:#f5643b; --g4:#fcaf45;
+    --r:26px;
+    /* Serif con carácter para los títulos, sans neutra para todo lo que se
+       opera. El contraste es lo que hace que se sienta hecho a mano. */
+    --display:ui-serif,"New York",Georgia,"Times New Roman",serif;
   }
   @media (prefers-color-scheme: dark){
-    :root{--bg:#0e1420; --card:#161f30; --ink:#e6edf9; --muted:#8fa1bd; --line:#26324a;
-          --blue:#5689cf; --blue-soft:#1b2740;}
+    :root{
+      --paper:#0f0d0c; --card:#181514; --ink:#f6f2f0; --ink-2:#a79f9a; --ink-3:#6f6763;
+      --line:#2a2523; --rose:#f07a90; --ring:#f6f2f0;
+    }
   }
   *{box-sizing:border-box}
-  body{margin:0;background:var(--bg);color:var(--ink);
-    font:16px/1.5 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
-    display:flex;flex-direction:column;min-height:100dvh}
-  header{padding:18px 20px 10px;text-align:center}
-  header h1{margin:0;font-size:19px;font-weight:600}
-  header p{margin:4px 0 0;color:var(--muted);font-size:13px}
-  main{flex:1;overflow-y:auto;padding:12px 16px 8px;display:flex;flex-direction:column;gap:12px}
-  .msg{max-width:min(560px,100%);width:fit-content;padding:12px 16px;border-radius:16px;white-space:pre-wrap}
-  .yo{align-self:flex-end;background:var(--blue);color:#fff;border-bottom-right-radius:5px}
-  .bot{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:5px}
-  .card{align-self:flex-start;width:min(560px,100%);background:var(--card);
-    border:1px solid var(--line);border-radius:16px;padding:16px;overflow:hidden}
-  .card h2{margin:0 0 2px;font-size:17px;font-weight:600}
-  .sub{color:var(--muted);font-size:13px;margin-bottom:12px}
-  .chips{display:flex;gap:6px;flex-wrap:wrap;margin-bottom:12px}
-  .chip{font-size:12px;padding:3px 9px;border-radius:999px;background:var(--blue-soft);color:var(--blue);font-weight:500}
-  .screen{text-align:center;font-size:10px;letter-spacing:.2em;color:var(--muted)}
-  .screen div{height:4px;border-radius:2px;background:var(--line);margin:5px auto 14px;max-width:70%}
-  .map{overflow-x:auto;padding-bottom:4px}
+  html,body{height:100%}
+  body::before{
+    content:'';position:fixed;inset:0;z-index:0;pointer-events:none;opacity:.5;
+    background:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.8' numOctaves='4'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)' opacity='.055'/%3E%3C/svg%3E");
+  }
+  body>*{position:relative;z-index:1}
+  body{
+    margin:0;background:var(--paper);color:var(--ink);
+    font:400 17px/1.55 -apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",Roboto,sans-serif;
+    -webkit-font-smoothing:antialiased;text-rendering:optimizeLegibility;
+    display:flex;flex-direction:column;min-height:100dvh;
+  }
+  /* Grano: una sola textura, reutilizada por cada superficie con color. */
+  .grain{position:absolute;inset:0;opacity:.32;mix-blend-mode:overlay;pointer-events:none}
+
+  header{padding:34px 24px 14px}
+  header h1{
+    margin:0;font-family:var(--display);font-size:38px;line-height:1.02;font-weight:500;
+    letter-spacing:-.022em;max-width:11ch;
+  }
+  header p{margin:10px 0 0;color:var(--ink-2);font-size:15px;letter-spacing:-.01em}
+
+  main{flex:1;overflow-y:auto;padding:20px 24px 4px;display:flex;flex-direction:column;gap:14px}
+  .msg{
+    max-width:min(520px,86%);width:fit-content;padding:13px 17px;border-radius:20px;
+    font-size:16px;letter-spacing:-.011em;white-space:pre-wrap;
+    animation:subir .34s cubic-bezier(.2,.7,.3,1) both;
+  }
+  @keyframes subir{from{opacity:0;transform:translateY(7px)}to{opacity:1;transform:none}}
+  .yo{align-self:flex-end;background:var(--ink);color:var(--paper);border-bottom-right-radius:7px}
+  .bot{align-self:flex-start;background:var(--card);border:1px solid var(--line);border-bottom-left-radius:7px}
+
+  .card{
+    align-self:flex-start;width:min(520px,100%);background:var(--card);
+    border:1px solid var(--line);border-radius:var(--r);padding:24px 22px 22px;
+    animation:subir .4s cubic-bezier(.2,.7,.3,1) both;
+  }
+  .card h2{margin:0;font-family:var(--display);font-size:27px;font-weight:500;
+    letter-spacing:-.018em;line-height:1.12}
+  .sub{color:var(--ink-2);font-size:15px;margin-top:6px;letter-spacing:-.01em}
+  .chips{display:flex;gap:7px;flex-wrap:wrap;margin-top:16px}
+  .chip{
+    font-size:12px;letter-spacing:.04em;text-transform:uppercase;padding:5px 11px;
+    border-radius:999px;border:1px solid var(--line);color:var(--ink-2)
+  }
+
+  .screen{margin:26px 0 20px;text-align:center}
+  .screen span{font-size:10px;letter-spacing:.34em;color:var(--ink-3)}
+  .screen div{
+    height:3px;border-radius:2px;margin:9px auto 0;max-width:62%;
+    background:linear-gradient(90deg,transparent,var(--ink-3),transparent);opacity:.5
+  }
+
+  .map{overflow-x:auto;margin:0 -6px;padding:0 6px 6px;scrollbar-width:none}
+  .map::-webkit-scrollbar{display:none}
   .grid{display:inline-block;min-width:100%}
-  .row{display:flex;gap:2px;align-items:center;justify-content:center;margin:2px 0}
-  .lbl{width:14px;flex:none;font-size:10px;color:var(--muted);text-align:center}
-  .s,.gap{width:19px;height:19px;flex:none;border-radius:50%;font-size:9px;
-    display:flex;align-items:center;justify-content:center}
+  .row{display:flex;gap:3px;align-items:center;justify-content:center;margin:3px 0}
+  .lbl{width:15px;flex:none;font-size:10px;color:var(--ink-3);text-align:center;letter-spacing:.02em}
+  .s,.gap{width:20px;height:20px;flex:none;border-radius:50%}
+  .s{
+    display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:500;
+    letter-spacing:-.02em;animation:aparecer .5s cubic-bezier(.2,.7,.3,1) both;
+  }
+  @keyframes aparecer{from{opacity:0;transform:scale(.82)}to{opacity:1;transform:none}}
   .gap{visibility:hidden}
-  .free{border:1.5px solid var(--blue);color:var(--muted)}
-  .taken{background:var(--red);color:#fff}
-  .pick{background:var(--pick);color:#fff;font-weight:600}
-  .acc{border:1.5px dashed var(--muted);color:var(--muted)}
-  .legend{display:flex;gap:12px;flex-wrap:wrap;justify-content:center;margin-top:12px;font-size:11px;color:var(--muted)}
-  .legend span{display:flex;align-items:center;gap:5px}
+  /* Lo disponible es lo que se lee; lo ocupado se retira. Al revés, el mapa
+     grita justo lo que no se puede elegir. */
+  .free{border:1.5px solid var(--ink);color:var(--ink)}
+  .taken{background:var(--line);color:var(--ink-3);opacity:.6}
+  .acc{border:1px dashed var(--ink-3);color:var(--ink-3)}
+  .pick{
+    position:relative;color:#fff;border:0;
+    background:linear-gradient(135deg,var(--g1),var(--g2) 42%,var(--g3) 78%,var(--g4));
+    box-shadow:0 0 0 3px color-mix(in srgb,var(--g2) 22%,transparent);
+  }
+
+  .legend{display:flex;gap:16px;flex-wrap:wrap;justify-content:center;margin-top:20px;
+    font-size:12px;color:var(--ink-3);letter-spacing:-.005em}
+  .legend span{display:flex;align-items:center;gap:6px}
   .legend i{width:11px;height:11px;border-radius:50%;display:block}
-  .cta{display:block;margin-top:14px;padding:13px;border-radius:12px;background:var(--blue);
-    color:#fff;text-align:center;font-weight:600;text-decoration:none}
-  .nota{margin-top:8px;font-size:12px;color:var(--muted);text-align:center}
-  .opciones{align-self:flex-start;display:flex;gap:6px;flex-wrap:wrap;max-width:min(560px,100%)}
-  .opciones button{background:var(--card);border:1px solid var(--line);color:var(--blue);
-    font-size:13px;font-weight:500;padding:9px 14px;border-radius:999px}
-  .otras{margin-top:12px;border-top:1px solid var(--line);padding-top:10px;font-size:13px}
-  .otras a{color:var(--blue);text-decoration:none;margin-right:12px;white-space:nowrap;display:inline-block;padding:3px 0}
-  form{display:flex;gap:8px;padding:10px 16px calc(14px + env(safe-area-inset-bottom));
-    background:var(--card);border-top:1px solid var(--line)}
-  input{flex:1;min-width:0;padding:13px 15px;border-radius:999px;border:1px solid var(--line);
-    background:var(--bg);color:var(--ink);font-size:16px}
-  input:focus{outline:2px solid var(--blue);outline-offset:-1px}
-  button{padding:0 20px;border:0;border-radius:999px;background:var(--blue);color:#fff;
-    font-size:16px;font-weight:600;cursor:pointer}
-  button:disabled{opacity:.5}
-  .ejemplos{display:flex;gap:6px;flex-wrap:wrap;justify-content:center;padding:0 16px 10px}
-  .ejemplos button{background:transparent;border:1px solid var(--line);color:var(--muted);
-    font-size:12px;font-weight:400;padding:6px 12px;border-radius:999px}
+
+  .cta{
+    position:relative;overflow:hidden;display:block;margin-top:22px;padding:17px 20px;
+    border-radius:18px;color:#fff;text-align:center;text-decoration:none;
+    font-size:16px;font-weight:600;letter-spacing:-.015em;
+    background:linear-gradient(115deg,var(--g1),var(--g2) 40%,var(--g3) 76%,var(--g4));
+    transition:transform .18s cubic-bezier(.2,.7,.3,1);
+  }
+  .cta:active{transform:scale(.985)}
+  .cta b{position:relative;font-weight:600}
+  .nota{margin-top:12px;font-size:12.5px;line-height:1.5;color:var(--ink-3);text-align:center;
+    letter-spacing:-.005em}
+
+  .otras{margin-top:20px;border-top:1px solid var(--line);padding-top:14px;font-size:14px;
+    color:var(--ink-2)}
+  .otras a{color:var(--ink);text-decoration:none;border-bottom:1px solid var(--line);
+    margin-right:14px;display:inline-block;padding-bottom:1px}
+
+  .opciones{align-self:flex-start;display:flex;gap:8px;flex-wrap:wrap;max-width:min(520px,100%)}
+  .opciones button{
+    background:var(--card);border:1px solid var(--line);color:var(--ink);
+    font-size:14px;font-weight:450;letter-spacing:-.01em;padding:11px 16px;border-radius:999px;
+    transition:transform .18s cubic-bezier(.2,.7,.3,1),border-color .18s;
+  }
+  .opciones button:hover{border-color:var(--ink-3)}
+  .opciones button:active{transform:scale(.97)}
+
+  .ejemplos{display:flex;gap:8px;flex-wrap:wrap;padding:12px 24px 4px}
+  .ejemplos button{
+    background:transparent;border:1px solid var(--line);color:var(--ink-2);
+    font-size:13px;font-weight:400;letter-spacing:-.01em;padding:8px 14px;border-radius:999px;
+    transition:border-color .18s,color .18s;
+  }
+  .ejemplos button:hover{border-color:var(--ink-3);color:var(--ink)}
+
+  form{display:flex;gap:10px;align-items:center;
+    padding:14px 24px calc(20px + env(safe-area-inset-bottom))}
+  .campo{flex:1;min-width:0;position:relative}
+  input{
+    width:100%;padding:16px 18px;border-radius:999px;border:1px solid var(--line);
+    background:var(--card);color:var(--ink);font-size:16px;letter-spacing:-.011em;
+    transition:border-color .2s;
+  }
+  input::placeholder{color:var(--ink-3)}
+  input:focus{outline:none;border-color:var(--ink-3)}
+  #enviar{
+    position:relative;overflow:hidden;width:52px;height:52px;flex:none;border:0;
+    border-radius:50%;cursor:pointer;color:#fff;
+    background:linear-gradient(135deg,var(--g1),var(--g2) 44%,var(--g3) 80%,var(--g4));
+    transition:transform .18s cubic-bezier(.2,.7,.3,1),opacity .18s;
+  }
+  #enviar:active{transform:scale(.93)}
+  #enviar:disabled{opacity:.4}
+  #enviar svg{position:relative;display:block;margin:auto}
+
+  .puntos{display:flex;gap:5px;align-items:center;padding:16px 18px}
+  .puntos i{width:6px;height:6px;border-radius:50%;background:var(--ink-3);
+    animation:latir 1.3s ease-in-out infinite}
+  .puntos i:nth-child(2){animation-delay:.16s}
+  .puntos i:nth-child(3){animation-delay:.32s}
+  @keyframes latir{0%,60%,100%{opacity:.28;transform:translateY(0)}30%{opacity:1;transform:translateY(-3px)}}
+
+  @media (min-width:640px){
+    header{padding:52px 40px 18px}
+    header h1{font-size:52px}
+    main{padding:24px 40px 4px}
+    .ejemplos{padding:14px 40px 4px}
+    form{padding:16px 40px 30px}
+  }
+  @media (prefers-reduced-motion:reduce){*{animation:none!important;transition:none!important}}
 </style>
 </head>
 <body>
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <filter id="grano"><feTurbulence type="fractalNoise" baseFrequency=".9" numOctaves="3"/>
+  <feColorMatrix type="saturate" values="0"/></filter>
+</svg>
+
 <header>
   <h1>¿Qué quieres ver?</h1>
-  <p>Escríbelo como se lo dirías a un amigo</p>
+  <p>Escríbelo como se lo dirías a un amigo.</p>
 </header>
 
 <main id="chat">
@@ -83,8 +196,15 @@
 </div>
 
 <form id="form">
-  <input id="texto" autocomplete="off" placeholder="Escribe aquí…" aria-label="Tu consulta">
-  <button id="enviar">Buscar</button>
+  <div class="campo">
+    <input id="texto" autocomplete="off" placeholder="Escribe aquí…" aria-label="Tu consulta">
+  </div>
+  <button id="enviar" aria-label="Buscar">
+    <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
+      stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+      <path d="M5 12h13M12 5l7 7-7 7"/>
+    </svg>
+  </button>
 </form>
 
 <script>
@@ -103,14 +223,29 @@ const el = (tag, cls, text) => {
 };
 const abajo = () => chat.scrollTo({ top: chat.scrollHeight, behavior: 'smooth' });
 
-function decir(texto, quien = 'bot') {
-  chat.append(el('div', `${quien} msg`, texto));
+/** Capa de grano sobre cualquier superficie con gradiente. */
+function granular(nodo) {
+  const s = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  s.setAttribute('class', 'grain');
+  s.setAttribute('aria-hidden', 'true');
+  const r = document.createElementNS('http://www.w3.org/2000/svg', 'rect');
+  r.setAttribute('width', '100%');
+  r.setAttribute('height', '100%');
+  r.setAttribute('filter', 'url(#grano)');
+  s.append(r);
+  nodo.prepend(s);
+}
+granular(enviar);
+
+function decir(txt, quien = 'bot') {
+  chat.append(el('div', `${quien} msg`, txt));
   abajo();
 }
 
 function mapaHtml(mapa, elegidas) {
   const cont = el('div', 'map');
   const grid = el('div', 'grid');
+  let n = 0;
   for (const fila of mapa.filas) {
     const row = el('div', 'row');
     const tag = () => el('span', 'lbl', fila.fila);
@@ -120,6 +255,8 @@ function mapaHtml(mapa, elegidas) {
       const clase = celda.acc ? 'acc' : elegidas.has(celda.id) ? 'pick' : celda.libre ? 'free' : 'taken';
       const s = el('span', `s ${clase}`, celda.n);
       s.title = celda.id;
+      // Escalonado corto: la sala se arma, no aparece de golpe.
+      s.style.animationDelay = `${Math.min(n++ * 3, 260)}ms`;
       row.append(s);
     }
     row.append(tag());
@@ -143,36 +280,42 @@ function tarjeta(r) {
   if (r.mapa) {
     const mejor = r.mapa.sugeridas[0];
     if (mejor) mejor.seats.forEach((s) => elegidas.add(s));
-    const pantalla = el('div', 'screen', 'PANTALLA');
-    pantalla.append(el('div'));
+    const pantalla = el('div', 'screen');
+    pantalla.append(el('span', null, 'PANTALLA'), el('div'));
     card.append(pantalla, mapaHtml(r.mapa, elegidas));
+
     const leyenda = el('div', 'legend');
-    for (const [cls, txt] of [['free','Libre'],['taken','Ocupada'],['pick','Sugerida'],['acc','Silla de ruedas']]) {
+    const muestras = [
+      ['Libre', 'border:1.5px solid var(--ink)'],
+      ['Ocupada', 'background:var(--line)'],
+      ['Sugerida', 'background:linear-gradient(135deg,var(--g1),var(--g3))'],
+      ['Silla de ruedas', 'border:1px dashed var(--ink-3)'],
+    ];
+    for (const [txt, css] of muestras) {
       const s = el('span');
       const i = el('i');
-      i.className = '';
-      i.style.cssText = cls === 'taken' ? 'background:var(--red)'
-        : cls === 'pick' ? 'background:var(--pick)'
-        : cls === 'acc' ? 'border:1.5px dashed var(--muted)'
-        : 'border:1.5px solid var(--blue)';
+      i.style.cssText = css;
       s.append(i, document.createTextNode(txt));
       leyenda.append(s);
     }
     card.append(leyenda);
   }
 
-  const cta = el('a', 'cta', elegidas.size ? `Ir a comprar — te sugiero ${[...elegidas].join(' y ')}` : 'Ir a comprar');
+  const cta = el('a', 'cta');
+  cta.append(el('b', null, elegidas.size ? `Ir a comprar · ${[...elegidas].join(' y ')}` : 'Ir a comprar'));
   cta.href = f.link;
   cta.target = '_blank';
   cta.rel = 'noopener';
   card.append(cta);
+  granular(cta);
+
   card.append(el('div', 'nota', r.mapa
     ? `${r.mapa.libres} de ${r.mapa.total} butacas libres · eliges asientos y pagas en Cineplanet · tienes 5 minutos desde que abres`
     : 'Eliges asientos y pagas en Cineplanet'));
 
   if (r.otras.length) {
     const otras = el('div', 'otras');
-    otras.append(el('span', null, 'Otras funciones: '));
+    otras.append(el('span', null, 'Otras funciones  '));
     for (const o of r.otras) {
       const a = el('a', null, `${o.fechaTexto} ${o.hora}`);
       a.href = o.link; a.target = '_blank'; a.rel = 'noopener';
@@ -218,7 +361,8 @@ async function consultar(valor) {
   decir(valor, 'yo');
   texto.value = '';
   enviar.disabled = true;
-  const pensando = el('div', 'bot msg', 'Buscando…');
+  const pensando = el('div', 'bot msg puntos');
+  pensando.append(el('i'), el('i'), el('i'));
   chat.append(pensando);
   abajo();
   let datos = null;
