@@ -20,7 +20,13 @@ const STOP = new Set(
   ('de del la el los las en para a un una unos unas y o con al cine cines cp ' +
     'quiero comprar entradas entrada ver boletos boleto funcion funciones ' +
     'pelicula peliculas por favor porfa dame busca buscame necesito me gustaria ' +
-    'hay algo tarde noche manana hoy dia sala butacas asientos').split(' '),
+    'hay algo tarde noche manana hoy dia sala butacas asientos ' +
+    // Preguntas y muletillas: sin esto "¿y dónde tiene?" encuentra la película
+    // "Donde duermen los sueños" y la conversación se va a otro lado.
+    'donde cuando cual cuales que como quien quienes porque cuanto cuantos ' +
+    'tiene tienen esta estan hay habra sale salen dan pasan ' +
+    'vivo estoy vengo cerca aqui alla ahi mas otro otra otros otras ' +
+    'si no ok gracias oe pe pues bueno igual tambien').split(' '),
 );
 
 const tokens = (s) => norm(s).split(' ').filter((w) => w && !STOP.has(w));

@@ -23,6 +23,11 @@ const titulo = (s) => (s ?? '').replace(/\b\w/g, (c) => c.toUpperCase());
 const recordar = (i) => ({
   movieId: i.movie?.id ?? null,
   cinemaId: i.cinema?.id ?? null,
+  // Dónde está la persona se dice una vez ("vivo en surco") y sirve para todo
+  // el resto de la charla: sin recordarlo, la segunda respuesta ofrece Pucallpa.
+  coords:
+    i.districtCoords ??
+    (i.cinema && Number.isFinite(i.cinema.lat) ? { lat: i.cinema.lat, lon: i.cinema.lon } : null),
   date: i.date,
   from: i.from,
   to: i.to,
@@ -73,6 +78,7 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
         movie: fresco.movie ?? previo.movie,
         // Nombrar un distrito nuevo descarta la sede anterior: cambió de idea.
         cinema: fresco.cinema ?? (fresco.district ? null : previo.cinema),
+        districtCoords: fresco.districtCoords ?? contexto.coords ?? null,
         date: fresco.date ?? contexto.date ?? null,
         from: fresco.from ?? contexto.from ?? null,
         to: fresco.to ?? contexto.to ?? null,
@@ -85,7 +91,9 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   }
 
   // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.
-  if (!intent.cinema && intent.districtCoords) {
+  // Sólo si lo nombró en este mensaje: unas coordenadas heredadas del turno
+  // anterior no son un distrito recién mencionado.
+  if (!intent.cinema && intent.district && intent.districtCoords) {
     const cerca = nearest(cinemaList, intent.districtCoords, 3);
     return {
       estado: 'elige-cine',
@@ -108,6 +116,27 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   }
 
   if (!intent.cinema) {
+    // Si ya se sabe la película, preguntar "¿en qué cine?" a secas obliga a
+    // adivinar dónde la dan. Mejor mostrar las sedes que sí la tienen.
+    const conFuncion = stillSellable(await showtimes({ movie: intent.movie }), today);
+    const sedes = [...new Set(conFuncion.map((s) => s.cinemaId))]
+      .map((id) => cinemaList.find((c) => c.id === id))
+      .filter(Boolean);
+    if (sedes.length) {
+      // Sin ubicación, la sede con más funciones es la apuesta más razonable.
+      const cuantas = new Map();
+      for (const s of conFuncion) cuantas.set(s.cinemaId, (cuantas.get(s.cinemaId) ?? 0) + 1);
+      const orden = intent.districtCoords
+        ? nearest(sedes, intent.districtCoords, 4)
+        : [...sedes].sort((a, b) => (cuantas.get(b.id) ?? 0) - (cuantas.get(a.id) ?? 0)).slice(0, 4);
+      return {
+        estado: 'elige-cine',
+        pregunta: `¿En cuál? ${intent.movie.title} está en:`,
+        opciones: orden.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+        intent,
+        contexto: recordar(intent),
+      };
+    }
     return { estado: 'falta', pregunta: MISSING.cinema, intent, contexto: recordar(intent) };
   }
 
@@ -116,9 +145,33 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     today,
   );
   if (!all.length) {
+    // Decir "no la dan acá" y callarse es un callejón sin salida, teniendo la
+    // lista de dónde sí la dan a un paso. La pregunta siguiente siempre es
+    // "¿y dónde entonces?", así que se responde antes de que la hagan.
+    const enOtros = stillSellable(await showtimes({ movie: intent.movie }), today);
+    const sedes = [...new Set(enOtros.map((s) => s.cinemaId))]
+      .map((id) => cinemaList.find((c) => c.id === id))
+      .filter(Boolean);
+    const cerca = sedes.length ? nearest(sedes, intent.cinema, 3) : [];
+
+    if (cerca.length) {
+      return {
+        estado: 'elige-cine',
+        pregunta: `${intent.movie.title} no la dan en ${intent.cinema.name}. Sí en:`,
+        opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+        intent,
+        // Se descarta la sede elegida pero no dónde está la persona: esa sede
+        // era justamente la pista de su ubicación.
+        contexto: recordar({
+          ...intent,
+          cinema: null,
+          districtCoords: intent.districtCoords ?? { lat: intent.cinema.lat, lon: intent.cinema.lon },
+        }),
+      };
+    }
     return {
       estado: 'sin-cartelera',
-      mensaje: `${intent.movie.title} no tiene funciones en ${intent.cinema.name} en los próximos días.`,
+      mensaje: `${intent.movie.title} no tiene funciones en ningún Cineplanet en los próximos días.`,
       intent,
       contexto: recordar(intent),
     };
