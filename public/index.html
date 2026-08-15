@@ -172,27 +172,53 @@
   }
   input::placeholder{color:var(--ink-3)}
   input:focus{outline:none;border-color:var(--ink-3)}
-  /* Vidrio sobre el gradiente: un velo translúcido, un borde de luz arriba y
-     una sombra corta abajo. Es lo que hace que el botón se sienta un objeto. */
+  /* Liquid glass: el gradiente va translúcido para que el papel se vea por
+     detrás y el desenfoque lo refracte. Encima, tres luces que es lo que hace
+     leer "vidrio": brillo especular arriba, aro de luz en el canto, y sombra
+     interna abajo. Al presionar el brillo se aplasta, como material blando. */
   #enviar{
-    position:relative;overflow:hidden;width:54px;height:54px;flex:none;border:0;
-    border-radius:50%;cursor:pointer;color:#fff;
-    background:linear-gradient(135deg,var(--g1),var(--g2) 44%,var(--g3) 80%,var(--g4));
-    box-shadow:0 4px 14px -4px color-mix(in srgb,var(--g2) 55%,transparent),
-               inset 0 1px 0 rgba(255,255,255,.55),
-               inset 0 -1px 2px rgba(0,0,0,.18);
-    transition:transform .18s cubic-bezier(.2,.7,.3,1),box-shadow .18s,opacity .18s;
+    position:relative;overflow:hidden;width:56px;height:56px;flex:none;border:0;
+    border-radius:50%;cursor:pointer;color:#fff;isolation:isolate;
+    display:flex;align-items:center;justify-content:center;
+    background:
+      linear-gradient(135deg,
+        color-mix(in srgb,var(--g1) 88%,transparent),
+        color-mix(in srgb,var(--g2) 88%,transparent) 44%,
+        color-mix(in srgb,var(--g3) 88%,transparent) 80%,
+        color-mix(in srgb,var(--g4) 88%,transparent));
+    backdrop-filter:blur(12px) saturate(190%);
+    -webkit-backdrop-filter:blur(12px) saturate(190%);
+    box-shadow:
+      inset 0 1.5px 1px rgba(255,255,255,.62),
+      inset 0 0 0 .5px rgba(255,255,255,.28),
+      inset 0 -3px 5px rgba(0,0,0,.22),
+      0 8px 20px -8px color-mix(in srgb,var(--g2) 70%,transparent),
+      0 2px 5px -2px rgba(0,0,0,.25);
+    transition:transform .22s cubic-bezier(.2,.7,.3,1),box-shadow .22s;
   }
+  /* Brillo especular: una elipse de luz arriba a la izquierda, difuminada. */
+  /* z-index explícito: el pseudo-elemento se pinta después del contenido, así
+     que sin esto el brillo tapa la flecha. */
   #enviar::after{
-    content:'';position:absolute;inset:0;border-radius:50%;pointer-events:none;
-    background:linear-gradient(180deg,rgba(255,255,255,.42),rgba(255,255,255,.06) 46%,rgba(255,255,255,0) 62%);
-    backdrop-filter:blur(6px) saturate(150%);-webkit-backdrop-filter:blur(6px) saturate(150%);
+    content:'';position:absolute;inset:0;z-index:1;border-radius:50%;pointer-events:none;
+    background:
+      radial-gradient(70% 55% at 32% 16%, rgba(255,255,255,.75), rgba(255,255,255,0) 70%),
+      radial-gradient(120% 90% at 50% 118%, rgba(255,255,255,.22), rgba(255,255,255,0) 60%);
+    transition:transform .22s cubic-bezier(.2,.7,.3,1),opacity .22s;
   }
-  #enviar:hover{box-shadow:0 6px 18px -4px color-mix(in srgb,var(--g2) 65%,transparent),
-               inset 0 1px 0 rgba(255,255,255,.6),inset 0 -1px 2px rgba(0,0,0,.18)}
-  #enviar:active{transform:scale(.93)}
-  #enviar:disabled{opacity:.4}
-  #enviar svg{position:relative;display:block;margin:auto}
+  #enviar:hover{
+    box-shadow:
+      inset 0 1.5px 1px rgba(255,255,255,.7),
+      inset 0 0 0 .5px rgba(255,255,255,.34),
+      inset 0 -3px 5px rgba(0,0,0,.22),
+      0 10px 26px -8px color-mix(in srgb,var(--g2) 80%,transparent),
+      0 2px 5px -2px rgba(0,0,0,.25);
+  }
+  #enviar:active{transform:scale(.94)}
+  #enviar:active::after{transform:scaleY(.72) translateY(3px);opacity:.85}
+  #enviar:disabled{opacity:.45}
+  #enviar svg:not(.grain){position:relative;z-index:2;display:block;
+    filter:drop-shadow(0 1px 1.5px rgba(0,0,0,.35))}
 
   .puntos{display:flex;gap:5px;align-items:center;padding:16px 18px}
   .puntos i{width:6px;height:6px;border-radius:50%;background:var(--ink-3);
@@ -235,7 +261,7 @@
   <button id="enviar" aria-label="Buscar">
     <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor"
       stroke-width="2.1" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-      <path d="M5 12h13M12 5l7 7-7 7"/>
+      <path d="M12 19V6M5.5 12.5 12 6l6.5 6.5"/>
     </svg>
   </button>
 </form>
