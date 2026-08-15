@@ -101,6 +101,37 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Nombró algo que no está en cartelera. Heredar la película del turno anterior
+  // produce una respuesta segura y equivocada: preguntó por una y se le contesta
+  // por otra. Mejor decir que no se encontró.
+  if (!fresco.movie && previo?.movie && fresco.sobrantes.length) {
+    const dicho = fresco.sobrantes.join(' ');
+    const cine = intent.cinema;
+    if (cine) {
+      const dia = intent.date ?? today;
+      const enCartelera = [];
+      for (const m of movieList) {
+        const f = stillSellable(await showtimes({ movie: m, cinemaIds: [cine.id] }), today);
+        if (f.some((s) => s.date === dia)) enCartelera.push(m.title);
+      }
+      if (enCartelera.length) {
+        return {
+          estado: 'cartelera',
+          pregunta: `No encontré «${dicho}» en cartelera. En ${cine.name} ${cuandoTexto(dia, today)} dan:`,
+          opciones: enCartelera.slice(0, 8).map((t) => ({ nombre: t })),
+          intent,
+          contexto: recordar({ ...intent, movie: null }),
+        };
+      }
+    }
+    return {
+      estado: 'falta',
+      pregunta: `No encontré «${dicho}» en cartelera. ¿Cuál quieres ver?`,
+      intent,
+      contexto: recordar({ ...intent, movie: null }),
+    };
+  }
+
   if (!intent.movie) {
     // "¿qué hay hoy en Salaverry?" es de lo más común que se pregunta, y la
     // cartelera está a un paso: listarla es mejor que pedir un título que

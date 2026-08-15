@@ -27,6 +27,11 @@ const STOP = new Set(
     'tiene tienen esta estan hay habra sale salen dan pasan ' +
     'vivo estoy vengo cerca aqui alla ahi mas otro otra otros otras ' +
     'si no ok gracias oe pe pues bueno igual tambien ' +
+    // Muletillas de seguimiento: "¿aún está en cartelera X?" no habla de una
+    // película llamada "aún" ni "cartelera".
+    'aun todavia sigue siguen continua cartelera cartera estreno estrenos ' +
+    'primera segunda tercera ultima ultimo esa ese eso aquella aquel ' +
+    'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
     // Artículos en inglés: "the odyssey" encontraba "THE MAN I LOVE".
     'the a of in on at and for to my i').split(' '),
 );
@@ -378,6 +383,17 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     }
   }
 
+  // Palabras que no se pudieron atribuir a nada: probablemente sean un título
+  // que no está en cartelera. Sirven para no rellenar con la película anterior.
+  const atribuidas = new Set([
+    ...(movieHit ? tokens(movieHit.item.title) : []),
+    ...(cinemaHit ? cinemaHit.hits : []),
+    ...(district ? tokens(district) : []),
+    ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
+    ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
+  ]);
+  const sobrantes = tokens(text).filter((w) => !atribuidas.has(w) && w.length >= 4);
+
   // "para mí y mi novia" son dos, aunque no diga ningún número.
   const pareja = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/.test(norm(text));
 
@@ -398,6 +414,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     // Nadie compra 50 butacas juntas por chat, y 0 rompe la búsqueda de bloques.
     seats: acotarPersonas(people ? +people[1] : worded ? worded[1] : pareja ? 2 : null),
     lugarDesconocido,
+    sobrantes,
     genero: genero
       ? { generos: genero.generos, apt: !!genero.apt, dice: genero.dice, nada: genero.nada }
       : null,
