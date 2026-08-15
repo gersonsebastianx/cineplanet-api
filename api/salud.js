@@ -25,7 +25,15 @@ export default async function handler(req, res) {
           fila: [new Date().toISOString(), 'diagnostico', 'escritura de prueba', 'prueba', '', '', '', '', ''],
         }),
       });
-      estado.prueba = { status: r.status, respuesta: (await r.text()).slice(0, 300) };
+      estado.prueba = {
+        status: r.status,
+        // Un fragmento basta para comparar contra la que muestra Apps Script y
+        // no alcanza para usar la URL: el identificador completo es más largo.
+        urlConfigurada: `…${process.env.BITACORA_URL.slice(-0)}`.length
+          ? process.env.BITACORA_URL.slice(0, 62) + '…'
+          : null,
+        respuesta: (await r.text()).slice(0, 200),
+      };
     } catch (err) {
       estado.prueba = { error: err.message };
     }
