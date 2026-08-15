@@ -98,6 +98,11 @@ contra esas listas. Es exacto, instantáneo, gratis y no alucina. Sólo fechas y
 horas son reglas: `hoy`, `mañana`, `el sábado`, `entre las 4 y 6`,
 `después de las 8`, `en la noche`.
 
+**Entiende más que títulos.** Géneros (`algo para niños`, `una de terror`),
+la cartelera de una sede (`qué hay hoy en Salaverry`), tipeos de hasta dos
+letras (`toi estori`), y lugares que no conoce los dice en vez de responder con
+cines de otra ciudad.
+
 **Nunca contesta sólo "no hay".** Si la ventana pedida está vacía, ensancha por
 pasos y dice qué cambió: primero la hora, después el día, y si la película ya
 termina antes de la fecha pedida, ofrece la última función. Esa es la mitad del

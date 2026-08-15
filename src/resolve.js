@@ -16,6 +16,7 @@ const MISSING = {
 /** Nombres propios: cada palabra en mayúscula ("San Isidro"). */
 const titulo = (s) => (s ?? '').replace(/\b\w/g, (c) => c.toUpperCase());
 /** Frases: sólo la primera letra ("31 de febrero no existe"). */
+const cuandoTexto = (dia, today) => (dia === today ? 'hoy' : sayDate(dia, today));
 const frase = (s) => (s ?? '').charAt(0).toUpperCase() + (s ?? '').slice(1);
 
 /**
@@ -106,27 +107,55 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     // todavía no eligió.
     if (intent.cinema) {
       const dia = intent.date ?? today;
+      // Un género pedido filtra la cartelera; "para niños" además exige APT,
+      // porque una animación +14 no sirve para lo que están pidiendo.
+      const candidatas = intent.genero
+        ? movieList.filter(
+            (m) =>
+              intent.genero.generos.includes(m.genre) &&
+              (!intent.genero.apt || m.rating === 'APT'),
+          )
+        : movieList;
       const enCartelera = [];
-      for (const m of movieList) {
+      for (const m of candidatas) {
         const f = stillSellable(
           await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
           today,
         );
         const delDia = f.filter((s) => s.date === dia);
-        if (delDia.length) enCartelera.push({ titulo: m.title, funciones: delDia.length });
+        if (delDia.length) enCartelera.push({ titulo: m.title, funciones: delDia.length, rating: m.rating });
       }
       if (enCartelera.length) {
         enCartelera.sort((a, b) => b.funciones - a.funciones);
+        const cuando = dia === today ? 'hoy' : sayDate(dia, today);
         return {
           estado: 'cartelera',
-          pregunta: `En ${intent.cinema.name} ${dia === today ? 'hoy' : sayDate(dia, today)} dan:`,
-          opciones: enCartelera.slice(0, 8).map((m) => ({ nombre: m.titulo })),
+          pregunta: intent.genero
+            ? `${frase(intent.genero.dice)} en ${intent.cinema.name} ${cuando}:`
+            : `En ${intent.cinema.name} ${cuando} dan:`,
+          opciones: enCartelera.slice(0, 8).map((m) => ({ nombre: m.titulo, nota: m.rating })),
+          intent,
+          contexto: recordar(intent),
+        };
+      }
+      if (intent.genero) {
+        return {
+          estado: 'sin-cartelera',
+          mensaje: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}.`,
           intent,
           contexto: recordar(intent),
         };
       }
     }
     const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
+    if (intent.genero && !intent.cinema) {
+      return {
+        estado: 'falta',
+        pregunta: `¿En qué cine buscas algo ${intent.genero.dice}?`,
+        intent,
+        contexto: recordar(intent),
+      };
+    }
     return {
       estado: 'falta',
       pregunta: `¿Qué quieres ver${donde}? Dime el nombre de la película.`,
@@ -155,6 +184,17 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
       estado: 'elige-cine',
       pregunta: '¿Cuál de estos?',
       opciones: intent.cinemaOptions.slice(0, 5).map((c) => ({ id: c.id, nombre: c.name, ciudad: c.city })),
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+
+  // Nombró un lugar que no reconocemos: decirlo es más honesto que listar sedes
+  // de otra ciudad como si fueran la respuesta.
+  if (!intent.cinema && intent.lugarDesconocido) {
+    return {
+      estado: 'falta',
+      pregunta: `No ubico "${intent.lugarDesconocido}". ¿En qué distrito o ciudad del Perú?`,
       intent,
       contexto: recordar(intent),
     };

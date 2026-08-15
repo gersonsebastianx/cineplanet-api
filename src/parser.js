@@ -79,6 +79,20 @@ export const CIUDADES_SIN_SEDE = {
   jaen: [-5.7089, -78.8078],
 };
 
+// Cómo pide la gente un género frente a cómo lo escribe Cineplanet. "Para
+// niños" no es un género suyo: es clasificación APT más animación o familiar.
+const GENEROS = [
+  { pide: /\b(nin[oa]s?|infantil|familiar|en familia|mis hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
+  { pide: /\b(terror|miedo|susto|horror)\b/, generos: ['Terror'], dice: 'de terror', nada: 'nada de terror' },
+  { pide: /\b(accion|aventura)\b/, generos: ['Acción'], dice: 'de acción', nada: 'nada de acción' },
+  { pide: /\b(comedia|graciosa|risa|chistosa)\b/, generos: ['Comedia'], dice: 'de comedia', nada: 'ninguna comedia' },
+  { pide: /\b(animad[ao]s?|dibujos|caricatura)\b/, generos: ['Animación'], dice: 'animada', nada: 'ninguna animada' },
+  { pide: /\b(anime|japonesa)\b/, generos: ['Anime'], dice: 'anime', nada: 'nada de anime' },
+  { pide: /\b(drama|dramatica)\b/, generos: ['Drama'], dice: 'de drama', nada: 'ningún drama' },
+  { pide: /\b(documental|documentales)\b/, generos: ['Documental'], dice: 'documental', nada: 'ningún documental' },
+  { pide: /\b(concierto|conciertos|musical)\b/, generos: ['Concierto'], dice: 'de concierto', nada: 'ningún concierto' },
+];
+
 /** Fecha de hoy en horario de Lima, como YYYY-MM-DD. */
 export function limaToday() {
   return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
@@ -240,9 +254,14 @@ function parseTime(text) {
   return { from: null, to: null, said: null };
 }
 
-/** Distancia de edición acotada: perdona un tipeo, no inventa coincidencias. */
+/**
+ * Distancia de edición acotada: perdona tipeos sin inventar coincidencias.
+ * Una letra en palabras cortas, dos en las largas — "estori" debe llegar a
+ * "story", pero "nueva" no debería llegar a "nueve" sin más apoyo.
+ */
 function closeEnough(a, b) {
-  if (Math.abs(a.length - b.length) > 1 || a.length < 5) return false;
+  const margen = Math.max(a.length, b.length) >= 6 ? 2 : 1;
+  if (Math.abs(a.length - b.length) > margen || a.length < 3) return false;
   const d = Array.from({ length: b.length + 1 }, (_, j) => j);
   for (let i = 1; i <= a.length; i++) {
     let prev = d[0];
@@ -253,7 +272,7 @@ function closeEnough(a, b) {
       prev = tmp;
     }
   }
-  return d[b.length] <= 1;
+  return d[b.length] <= margen;
 }
 
 // Palabras que aparecen en tantos nombres de cine que por sí solas no eligen
@@ -276,23 +295,27 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
   for (const item of candidates) {
     const have = tokens(label(item));
     if (!have.length) continue;
-    let hits = have.filter((w) => want.has(w));
-    // Un tipeo no debería costar la búsqueda: "la odicea" sigue siendo La Odisea.
-    if (!hits.length) {
-      hits = have.filter((w) => list.some((q) => closeEnough(q, w)));
-    }
+    // Se distinguen las coincidencias exactas de las aproximadas: sin eso
+    // "moanna" empata con La Molina y le gana a Salaverry por orden de lista.
+    const exactos = have.filter((w) => want.has(w));
+    const aprox = have.filter((w) => !want.has(w) && list.some((q) => closeEnough(q, w)));
+    let hits = [...exactos, ...aprox];
+    let peso = exactos.length + aprox.length * 0.8;
     // "spiderman" pegado debe encontrar "Spider man Un nuevo dia": se comparan
     // sin espacios, en ambos sentidos, con largo mínimo para no unir cualquier cosa.
     const haveGlued = have.join('');
     if (!hits.length && have.length > 1 && glued.length >= 6) {
-      if (glued.includes(haveGlued) || haveGlued.startsWith(glued)) hits = have;
+      if (glued.includes(haveGlued) || haveGlued.startsWith(glued)) {
+        hits = have;
+        peso = have.length;
+      }
     }
     if (!hits.length) continue;
     // Sólo palabras distintivas eligen sede: si no, "jesús maría" termina en
     // Villa María del Triunfo, que es otro distrito y otra punta de la ciudad.
     if (weak && hits.every((w) => weak.has(w))) continue;
     // Premia cubrir el nombre completo; así "toy story" no pierde con "toy".
-    const score = hits.length / have.length + hits.length * 0.1;
+    const score = peso / have.length + hits.length * 0.1;
     if (score >= minScore) scored.push({ item, score, hits });
   }
   scored.sort((a, b) => b.score - a.score);
@@ -316,6 +339,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     bestByTokens(text, cinemas, (c) => c.district ?? '', { weak: WEAK_VENUE, minScore: 0.45 });
   // Un distrito sin sede propia igual dice dónde está la persona.
   const t = norm(text);
+  const genero = GENEROS.find((g) => g.pide.test(norm(text))) ?? null;
   const ciudadSinSede = Object.keys(CIUDADES_SIN_SEDE).find((c) =>
     new RegExp(`\\b${c}\\b`).test(norm(text)),
   );
@@ -339,6 +363,21 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     new RegExp(`\\b${w}\\s+(personas?|entradas?|boletos?|butacas?|asientos?)\\b`).test(norm(text)),
   );
 
+  // Si nombró un lugar tras "en" y no es sede, distrito ni ciudad conocida, hay
+  // que decir que no se conoce en vez de responder con cines de otra ciudad.
+  let lugarDesconocido = null;
+  if (!cinemaHit && !district && !ciudadSinSede) {
+    const usadas = new Set([
+      ...(movieHit ? tokens(movieHit.item.title) : []),
+      ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
+    ]);
+    const m = /\ben\s+(?:el\s+|la\s+|los\s+|las\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i.exec(text);
+    if (m) {
+      const dicho = tokens(m[1]).filter((w) => !usadas.has(w));
+      if (dicho.length) lugarDesconocido = m[1].trim();
+    }
+  }
+
   // "para mí y mi novia" son dos, aunque no diga ningún número.
   const pareja = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/.test(norm(text));
 
@@ -358,6 +397,10 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     to,
     // Nadie compra 50 butacas juntas por chat, y 0 rompe la búsqueda de bloques.
     seats: acotarPersonas(people ? +people[1] : worded ? worded[1] : pareja ? 2 : null),
+    lugarDesconocido,
+    genero: genero
+      ? { generos: genero.generos, apt: !!genero.apt, dice: genero.dice, nada: genero.nada }
+      : null,
     said: { date: dateSaid, time: timeSaid },
     imposible: fechaImposible ?? horaImposible ?? null,
   };
