@@ -78,7 +78,14 @@
     background:linear-gradient(90deg,transparent,var(--ink-3),transparent);opacity:.5
   }
 
-  .map{overflow-x:auto;margin:0 -6px;padding:0 6px 6px;scrollbar-width:none}
+  .map{overflow-x:auto;margin:0 -6px;padding:0 6px 6px;scrollbar-width:none;scroll-behavior:smooth}
+  /* Si la sala es más ancha que la pantalla hay que decirlo: sin el degradado
+     en los bordes, nadie sabe que el mapa sigue y las butacas sugeridas
+     parecen no existir. */
+  .map.desborda{
+    -webkit-mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);
+    mask-image:linear-gradient(90deg,transparent 0,#000 18px,#000 calc(100% - 18px),transparent 100%);
+  }
   .map::-webkit-scrollbar{display:none}
   .grid{display:inline-block;min-width:100%}
   .row{display:flex;gap:3px;align-items:center;justify-content:center;margin:3px 0}
@@ -350,6 +357,22 @@ function mapaHtml(mapa, elegidas) {
   return cont;
 }
 
+/**
+ * Desplaza el mapa para que las butacas marcadas queden a la vista. En una sala
+ * de 26 columnas la sugerencia puede caer fuera de la pantalla, y entonces
+ * parece que el botón propone butacas que no existen.
+ */
+function centrarEnMarcadas(card) {
+  const mapa = card.querySelector('.map');
+  const marcada = card.querySelector('.s.pick');
+  if (!mapa) return;
+  mapa.classList.toggle('desborda', mapa.scrollWidth > mapa.clientWidth + 4);
+  if (!marcada) return;
+  const m = mapa.getBoundingClientRect();
+  const s = marcada.getBoundingClientRect();
+  mapa.scrollLeft += s.left - m.left - m.width / 2 + s.width / 2;
+}
+
 /** Deja marcadas exactamente estas butacas en el mapa de la tarjeta. */
 function marcar(card, ids) {
   const quiero = new Set(ids);
@@ -432,8 +455,14 @@ function tarjeta(r) {
     segunda.target = '_blank';
     segunda.rel = 'noopener';
     // Al pasar por encima se marca en el mapa: así se ve de qué butacas habla.
-    segunda.addEventListener('mouseenter', () => marcar(card, alterna.seats));
-    segunda.addEventListener('mouseleave', () => marcar(card, [...elegidas]));
+    segunda.addEventListener('mouseenter', () => {
+      marcar(card, alterna.seats);
+      centrarEnMarcadas(card);
+    });
+    segunda.addEventListener('mouseleave', () => {
+      marcar(card, [...elegidas]);
+      centrarEnMarcadas(card);
+    });
     ctas.append(segunda);
   }
   card.append(ctas);
@@ -494,7 +523,10 @@ function responder(r) {
   } else {
     decir('Encontré esto:');
   }
-  chat.append(tarjeta(r));
+  const card = tarjeta(r);
+  chat.append(card);
+  // Después del layout: antes de pintar, el mapa aún no tiene ancho medible.
+  requestAnimationFrame(() => centrarEnMarcadas(card));
   abajo();
 }
 
