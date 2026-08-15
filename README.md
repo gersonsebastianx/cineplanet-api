@@ -109,6 +109,8 @@ asientos y el pago ocurren allá. No se piden ni se guardan datos personales.
 Necesita servidor: la API de Cineplanet exige cookie de servidor y no manda
 cabeceras CORS, así que un frontend puro no puede llamarla.
 
+**En línea: [cineplanet-api.vercel.app](https://cineplanet-api.vercel.app)**
+
 ### Ponerla en línea
 
 ```bash
