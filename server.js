@@ -57,6 +57,20 @@ const masBuscadas = (n = 3) =>
     .slice(0, n)
     .map(([texto]) => texto);
 
+/**
+ * IP real del visitante. Detrás de un proxy —cualquier hosting— `remoteAddress`
+ * es la del proxy y sería la misma para todos: el límite de consultas se
+ * agotaría entre desconocidos y quedarían bloqueados sin haber hecho nada.
+ * Sólo se confía en la cabecera si el despliegue declara que hay proxy.
+ */
+function clientIp(req) {
+  if (process.env.TRUST_PROXY === '1') {
+    const fwd = req.headers['x-forwarded-for'];
+    if (typeof fwd === 'string' && fwd) return fwd.split(',')[0].trim();
+  }
+  return req.socket.remoteAddress ?? 'anon';
+}
+
 function allowed(ip) {
   const now = Date.now();
   const seen = (hits.get(ip) ?? []).filter((t) => now - t < RATE.windowMs);
@@ -82,11 +96,13 @@ async function readBody(req, limit = 4096) {
   return Buffer.concat(chunks).toString('utf8');
 }
 
+const arranque = new Date().toISOString();
+
 const server = createServer(async (req, res) => {
   const url = new URL(req.url, `http://${req.headers.host}`);
 
   if (req.method === 'POST' && url.pathname === '/api/consulta') {
-    const ip = req.socket.remoteAddress ?? 'anon';
+    const ip = clientIp(req);
     if (!allowed(ip)) {
       return json(res, 429, { estado: 'error', mensaje: 'Demasiadas consultas seguidas. Espera un momento.' });
     }
@@ -110,6 +126,11 @@ const server = createServer(async (req, res) => {
           : 'No pude resolver esa consulta.',
       });
     }
+  }
+
+  // El hosting la usa para saber si el proceso sigue vivo.
+  if (req.method === 'GET' && url.pathname === '/api/salud') {
+    return json(res, 200, { ok: true, desde: arranque });
   }
 
   if (req.method === 'GET' && url.pathname === '/api/populares') {
@@ -138,3 +159,11 @@ await mkdir(resolvePath(ROOT, '.cache'), { recursive: true }).catch(() => {});
 server.listen(PORT, () => {
   console.log(`Cineplanet conversacional en http://localhost:${PORT}`);
 });
+
+// El hosting manda SIGTERM al reiniciar; cerrar a tiempo evita respuestas cortadas.
+for (const senal of ['SIGTERM', 'SIGINT']) {
+  process.on(senal, () => {
+    server.close(() => process.exit(0));
+    setTimeout(() => process.exit(0), 5000).unref();
+  });
+}

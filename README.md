@@ -109,6 +109,28 @@ asientos y el pago ocurren allá. No se piden ni se guardan datos personales.
 Necesita servidor: la API de Cineplanet exige cookie de servidor y no manda
 cabeceras CORS, así que un frontend puro no puede llamarla.
 
+### Ponerla en línea
+
+```bash
+npm start        # local, http://localhost:3000
+```
+
+Para que la use alguien más hace falta un servidor: [`render.yaml`](render.yaml)
+define el despliegue completo, sólo hay que conectar el repo.
+
+Dos cosas que el servidor necesita en producción y que no se notan en local:
+
+- **`TRUST_PROXY=1`.** Detrás de un proxy, `remoteAddress` es la del proxy y es
+  la misma para todo el mundo: el límite de consultas se agotaría entre
+  desconocidos y quedarían bloqueados sin haber hecho nada. Con la variable
+  puesta se lee `X-Forwarded-For`; sin ella se ignora, que es lo correcto en
+  local donde esa cabecera la puede inventar cualquiera.
+- **`/api/salud`** para que el hosting sepa que el proceso vive, y cierre
+  ordenado con `SIGTERM` para no cortar respuestas a medias.
+
+En el plan gratuito de Render el servicio duerme tras ~15 minutos sin visitas,
+así que la primera consulta después de un rato tarda cerca de un minuto.
+
 ---
 
 ## El cliente

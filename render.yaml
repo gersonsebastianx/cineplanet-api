@@ -1,0 +1,21 @@
+# Despliegue en Render. Se conecta el repo y esto define todo lo demás.
+#
+# El plan gratuito duerme el servicio tras ~15 minutos sin visitas, así que la
+# primera consulta después de un rato tarda cerca de un minuto en responder.
+# Para uso entre amigos alcanza; si molesta, el plan pago lo mantiene despierto.
+services:
+  - type: web
+    name: cineplanet
+    runtime: node
+    plan: free
+    region: oregon
+    buildCommand: ''
+    startCommand: node server.js
+    healthCheckPath: /api/salud
+    envVars:
+      # Sin esto, todas las visitas comparten la IP del proxy y el límite de
+      # consultas se agota entre desconocidos.
+      - key: TRUST_PROXY
+        value: '1'
+      - key: NODE_VERSION
+        value: '22'
