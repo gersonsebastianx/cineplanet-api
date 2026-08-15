@@ -6,15 +6,24 @@
 // que respondió Apps Script. Pide el token porque escribe una fila de verdad.
 
 export default async function handler(req, res) {
-  const bitacora = process.env.BITACORA_URL
-    ? 'apps-script'
-    : process.env.GOOGLE_SA_EMAIL && process.env.GOOGLE_SA_KEY && process.env.SHEET_ID
-      ? 'cuenta-de-servicio'
-      : 'apagada';
+  const conCuenta =
+    !!process.env.GOOGLE_SA_EMAIL && !!process.env.GOOGLE_SA_KEY && !!process.env.SHEET_ID;
+  const bitacora = conCuenta ? 'cuenta-de-servicio' : process.env.BITACORA_URL ? 'apps-script' : 'apagada';
 
   const estado = { ok: true, bitacora, tokenPresente: !!process.env.BITACORA_TOKEN };
 
   const pedido = req.query?.diagnostico;
+  // Con cuenta de servicio la prueba se hace por el mismo camino que la bitácora.
+  if (pedido && conCuenta) {
+    const { anotar } = await import('../src/bitacora.js');
+    await anotar({
+      sesion: 'diagnostico',
+      texto: 'escritura de prueba',
+      respuesta: { estado: 'prueba' },
+    });
+    estado.prueba = { via: 'cuenta-de-servicio', enviada: true };
+    return res.status(200).json(estado);
+  }
   if (pedido && process.env.BITACORA_TOKEN && pedido === process.env.BITACORA_TOKEN) {
     try {
       const r = await fetch(process.env.BITACORA_URL, {

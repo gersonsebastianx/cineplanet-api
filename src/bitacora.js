@@ -7,24 +7,26 @@
 // Sin dependencias: el token se firma con `node:crypto` y se cambia por uno de
 // acceso con `fetch`. Si faltan las credenciales, no hace nada y no molesta.
 //
-// Hay dos maneras de llegar a la hoja, y basta con una:
+// Hay dos maneras de llegar a la hoja, y basta con una. Si están las dos, manda
+// la cuenta de servicio: es la elección deliberada y la que aísla mejor, así que
+// no debería quedar tapada por una variable vieja que alguien olvidó borrar.
 //
-//   BITACORA_URL      la más simple: un Apps Script publicado como web app
-//   BITACORA_TOKEN    palabra compartida con ese script, para que no escriba
-//                     cualquiera que descubra la URL
-//
-//   GOOGLE_SA_EMAIL   la otra: cuenta de servicio de Google Cloud
+//   GOOGLE_SA_EMAIL   cuenta de servicio de Google Cloud
 //   GOOGLE_SA_KEY     su clave privada (el PEM completo)
 //   SHEET_ID          id de la hoja, compartida con ese correo como editor
+//
+//   BITACORA_URL      la alternativa: un Apps Script publicado como web app
+//   BITACORA_TOKEN    palabra compartida con ese script
 
 import { createSign } from 'node:crypto';
 
 const SCOPE = 'https://www.googleapis.com/auth/spreadsheets';
 const TOKEN_URL = 'https://oauth2.googleapis.com/token';
 
-const activo = () =>
-  !!process.env.BITACORA_URL ||
+const conCuentaDeServicio = () =>
   !!(process.env.GOOGLE_SA_EMAIL && process.env.GOOGLE_SA_KEY && process.env.SHEET_ID);
+
+const activo = () => conCuentaDeServicio() || !!process.env.BITACORA_URL;
 
 const b64url = (buf) =>
   Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
@@ -90,7 +92,7 @@ export async function anotar(datos) {
     const fila = armarFila(datos);
 
     // Camino corto: el Apps Script de la propia hoja.
-    if (process.env.BITACORA_URL) {
+    if (!conCuentaDeServicio() && process.env.BITACORA_URL) {
       const res = await fetch(process.env.BITACORA_URL, {
         method: 'POST',
         // Apps Script responde 302 hacia googleusercontent y con JSON la
@@ -115,7 +117,7 @@ export async function anotar(datos) {
     const url =
       `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEET_ID}` +
       `/values/A:I:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-    await fetch(url, {
+    const res = await fetch(url, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${await accessToken()}`,
@@ -123,6 +125,16 @@ export async function anotar(datos) {
       },
       body: JSON.stringify({ values: [fila] }),
     });
+    // Mismo criterio que en el otro camino: un fallo tiene que dejar rastro.
+    if (!res.ok) {
+      console.error(
+        JSON.stringify({
+          t: 'bitacora-rechazo',
+          status: res.status,
+          respuesta: (await res.text()).slice(0, 200),
+        }),
+      );
+    }
   } catch (err) {
     // Se deja rastro en los logs y se sigue: la consulta ya se respondió.
     console.error(JSON.stringify({ t: 'bitacora-error', error: err.message }));
