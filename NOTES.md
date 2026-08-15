@@ -14,7 +14,7 @@ Todo lo que usamos es de lectura.
 | Ruta | Contenido |
 |---|---|
 | `/api/v1-web/cache/moviescache` | Cartelera. Árbol `movies[].cinemas[].dates[].sessions[]` |
-| `/api/v1-web/cache/cinemascache` | 41 cines con `ID`, nombre, ciudad, dirección y **lat/long** |
+| `/api/v1-web/cache/cinemascache` | Cines con `ID`, nombre, ciudad, dirección, **lat/long** y distrito |
 | `/api/v1-web/cache/sessioncache` | Funciones: `id`, `showtime`, `screenName`, `formats`, `languages` |
 | `/api/v1-web/seatplan/cinema/{cinemaId}/session/{sessionId}` | Mapa de butacas |
 
@@ -48,6 +48,16 @@ reciben 403, su backend de sesiones está caído — no es un bloqueo por IP. Se
 distingue así: un bloqueo dirigido responde 403 desde el primer request y sigue
 entregando cookies. Visto el 2026-08-15. No hay nada que arreglar del lado
 nuestro; sólo reintentar.
+
+## El distrito de cada sede
+
+`secondAddress` lo trae, en las 43 sedes sin excepción, con formatos irregulares:
+`"Miraflores Lima Lima"`, `"La Molina - Lima"`, `"Ate, Lima Lima"`, `"AteLima Lima"`.
+Se limpia cortando en `(`, `,` y ` - `, y quitando del final la ciudad repetida.
+
+Importa porque el nombre de la sede **no** dice dónde está: CP Salaverry queda en
+Jesús María, CP El Polo en Surco, CP Norte en Los Olivos. Una lista escrita a mano
+se equivoca; ésta no.
 
 ## Estados de butaca
 

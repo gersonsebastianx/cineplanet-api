@@ -38,7 +38,7 @@ cookies.
 | Ruta | Contenido |
 |---|---|
 | `/cache/moviescache` | Cartelera. Árbol `movies[].cinemas[].dates[].sessions[]` |
-| `/cache/cinemascache` | 41 cines con `ID`, nombre, ciudad, dirección y lat/long |
+| `/cache/cinemascache` | Cines con `ID`, nombre, ciudad, dirección, lat/long y **distrito** en `secondAddress` |
 | `/cache/sessioncache` | Funciones: `id`, `showtime`, `screenName`, `formats`, `languages` |
 | `/seatplan/cinema/{cinemaId}/session/{sessionId}` | Mapa de butacas |
 
@@ -93,8 +93,7 @@ npm start        # http://localhost:3000
 
 > «quiero comprar entradas a Toy Story hoy entre las 4 y 6 en el real plaza salaverry»
 
-**Sin modelos de lenguaje.** El vocabulario es cerrado —las películas en
-cartelera y los 41 cines— así que [`src/parser.js`](src/parser.js) compara
+**Sin modelos de lenguaje.** El vocabulario es cerrado —la cartelera y los cines, ambos traídos de la API— así que [`src/parser.js`](src/parser.js) compara
 contra esas listas. Es exacto, instantáneo, gratis y no alucina. Sólo fechas y
 horas son reglas: `hoy`, `mañana`, `el sábado`, `entre las 4 y 6`,
 `después de las 8`, `en la noche`.

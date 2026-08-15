@@ -1,10 +1,10 @@
 // Interpreta una frase suelta en español: "Toy Story hoy entre 4 y 6 en el
 // real plaza salaverry" → { movie, date, from, to, cinema, seats }.
 //
-// No usa modelos de lenguaje a propósito. El vocabulario es cerrado —las
-// películas en cartelera y los 41 cines— así que comparar contra esas listas
-// es más exacto, instantáneo y gratis. Lo único abierto son fechas y horas, y
-// eso son reglas.
+// No usa modelos de lenguaje a propósito. El vocabulario es cerrado —la cartelera
+// y los cines, ambos traídos de la API— así que comparar contra esas listas es
+// más exacto, instantáneo y gratis. Lo único abierto son fechas y horas, y eso
+// son reglas.
 
 const norm = (s) =>
   (s ?? '')
@@ -35,31 +35,19 @@ const WORD_NUMBERS = {
   siete: 7, ocho: 8, nueve: 9, diez: 10, once: 11, doce: 12,
 };
 
-// Distritos de Lima que la gente nombra pero que no tienen Cineplanet propio, o
-// cuyo nombre no coincide con el de la sede. Sirven para ofrecer el más cercano
-// en vez de responder que no existe.
+// Distritos que la gente nombra y que **no** tienen Cineplanet. El distrito de
+// cada sede sí sale de los datos (`secondAddress`), así que acá sólo quedan los
+// vacíos: sirven para ofrecer la sede más cercana en vez de decir que no existe.
+// Escritos a mano por necesidad — Cineplanet no publica lo que no tiene.
 export const DISTRICTS = {
   barranco: [-12.1465, -77.0206],
-  miraflores: [-12.1211, -77.0296],
-  surco: [-12.1355, -76.9936],
-  'santiago de surco': [-12.1355, -76.9936],
   'san isidro': [-12.0972, -77.0365],
-  'jesus maria': [-12.0741, -77.0492],
-  lince: [-12.0862, -77.0364],
   magdalena: [-12.0906, -77.0729],
   'pueblo libre': [-12.0748, -77.0631],
-  surquillo: [-12.1122, -77.0155],
-  chorrillos: [-12.1747, -77.0189],
-  'la victoria': [-12.0669, -77.0158],
-  brena: [-12.0589, -77.0503],
   rimac: [-12.0281, -77.0294],
-  ate: [-12.0261, -76.9186],
-  callao: [-12.0566, -77.1181],
   'la perla': [-12.0689, -77.1036],
   bellavista: [-12.0611, -77.1069],
   independencia: [-11.9889, -77.0553],
-  'los olivos': [-11.9739, -77.0703],
-  'san martin de porres': [-12.0261, -77.0808],
   chosica: [-11.9403, -76.6975],
   barranca: [-10.7503, -77.7614],
 };
@@ -251,10 +239,11 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
  * @param {{movies: Array, cinemas: Array, today?: string}} catalog
  */
 export function parse(text, { movies, cinemas, today = limaToday() }) {
-  const cinemaHit = bestByTokens(text, cinemas, (c) => c.name, {
-    weak: WEAK_VENUE,
-    minScore: 0.45,
-  });
+  // Se busca por nombre y por distrito real: "en jesús maría" debe encontrar
+  // CP Salaverry, que es donde está, aunque el nombre no lo diga.
+  const cinemaHit =
+    bestByTokens(text, cinemas, (c) => c.name, { weak: WEAK_VENUE, minScore: 0.45 }) ??
+    bestByTokens(text, cinemas, (c) => c.district ?? '', { weak: WEAK_VENUE, minScore: 0.45 });
   // Un distrito sin sede propia igual dice dónde está la persona.
   const t = norm(text);
   const district = Object.keys(DISTRICTS)

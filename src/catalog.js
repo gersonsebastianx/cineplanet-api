@@ -36,12 +36,39 @@ function haversine(a, b) {
   return 2 * R * Math.asin(Math.sqrt(s));
 }
 
+/**
+ * Saca el distrito de `secondAddress`, que llega como "Miraflores Lima Lima" o
+ * "La Molina - Lima". Es la única fuente real del distrito de cada sede: sin
+ * esto habría que mantener una lista a mano, y una lista a mano se equivoca
+ * (CP Salaverry está en Jesús María, no en un distrito llamado Salaverry).
+ */
+function districtOf(secondAddress, city) {
+  let s = (secondAddress ?? '')
+    .split('(')[0]
+    .split(',')[0]
+    .split(' - ')[0]
+    .trim();
+  const same = (a, b) => norm(a) === norm(b);
+  // La ciudad y el departamento vienen repetidos al final; se quitan. A veces el
+  // repetido no es la ciudad sino la región ("Ventanilla Callao Callao").
+  let parts = s.split(/\s+/).filter(Boolean);
+  while (parts.length > 1 && (same(parts.at(-1), city) || same(parts.at(-1), parts.at(-2)))) {
+    parts.pop();
+  }
+  s = parts.join(' ');
+  // A veces la ciudad viene pegada a la última palabra: "AteLima".
+  const glued = new RegExp(`${city}$`, 'i');
+  if (parts.length && glued.test(s) && !same(s, city)) s = s.replace(glued, '').trim();
+  return s || city;
+}
+
 export async function cinemas() {
   const { cinemas: list } = await getCinemas();
   return list.map((c) => ({
     id: c.ID,
     name: c.name,
     city: c.city,
+    district: districtOf(c.secondAddress, c.city),
     address: c.address,
     slug: c.formattedCinemaName,
     lat: parseFloat(c.latitude),
