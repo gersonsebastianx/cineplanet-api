@@ -1,0 +1,9 @@
+{
+  "$schema": "https://openapi.vercel.sh/vercel.json",
+  "framework": null,
+  "build": { "env": { "CACHE_DIR": "/tmp/cineplanet-cache" } },
+  "functions": {
+    "api/*.js": { "maxDuration": 20 }
+  },
+  "env": { "CACHE_DIR": "/tmp/cineplanet-cache" }
+}

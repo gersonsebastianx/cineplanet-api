@@ -115,8 +115,18 @@ cabeceras CORS, así que un frontend puro no puede llamarla.
 npm start        # local, http://localhost:3000
 ```
 
-Para que la use alguien más hace falta un servidor: [`render.yaml`](render.yaml)
-define el despliegue completo, sólo hay que conectar el repo.
+Para que la use alguien más hace falta un servidor, y hay dos caminos, ambos
+gratis y sin tarjeta:
+
+- **Vercel** — [`vercel.json`](vercel.json) y las funciones de [`api/`](api).
+  No duerme, así que la primera consulta responde igual de rápido que la
+  décima. Es el que conviene si el enlace se comparte.
+- **Render** — [`render.yaml`](render.yaml), proceso permanente, cero cambios.
+  En el plan gratuito duerme tras ~15 minutos sin visitas y despertarlo tarda
+  cerca de un minuto.
+
+En Vercel el conteo de búsquedas populares vive en la memoria de cada instancia,
+así que es aproximado y se reinicia solo. Es para sugerir, no para medir.
 
 Dos cosas que el servidor necesita en producción y que no se notan en local:
 

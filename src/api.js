@@ -17,7 +17,10 @@ const UA =
   'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 ' +
   '(KHTML, like Gecko) Chrome/140.0.0.0 Safari/537.36';
 
-const CACHE_DIR = resolve(dirname(fileURLToPath(import.meta.url)), '..', '.cache');
+// En un hosting sin disco de escritura el único lugar grabable es /tmp, así que
+// la ruta se puede mover por variable de entorno.
+const CACHE_DIR =
+  process.env.CACHE_DIR ?? resolve(dirname(fileURLToPath(import.meta.url)), '..', '.cache');
 
 let cookie = null;
 const cache = new Map();
