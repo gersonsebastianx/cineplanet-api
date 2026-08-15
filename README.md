@@ -4,9 +4,6 @@ Documentación de la API web de Cineplanet Perú, obtenida por ingeniería inver
 y verificada contra el sitio real — más un cliente en Node que sirve de
 demostración de que la documentación es correcta.
 
-Inspirado en [asther0/cineplanet-cli](https://github.com/asther0/cineplanet-cli)
-— ver [Crédito](#crédito).
-
 **Cero dependencias.** Node 20+ y nada más.
 
 ```bash
@@ -127,19 +124,10 @@ funciona solo.
 
 ## Crédito
 
-Este proyecto nació inspirado en
+Inspirado en
 **[asther0/cineplanet-cli](https://github.com/asther0/cineplanet-cli)**, la TUI
-en Rust de [@asther0](https://github.com/asther0), que documentó la forma de esta
-API primero. Sin ese trabajo previo esto habría tomado mucho más.
-
-Dos cosas salieron específicamente de leer su código fuente: los **códigos de
-estado de butaca** (0/1/3/5/7) y el hecho de que **los dos ejes vienen
-invertidos**. Ambas se verificaron después de forma independiente contra el sitio
-real. El resto es una implementación propia en Node, con un foco distinto:
-documentar la API y usarla de forma conversacional, en vez de una interfaz de
-terminal.
-
-Si buscas la TUI original, es la de él. Este repo existe con su visto bueno.
+en Rust que documentó esta API primero. De ahí salieron los códigos de estado de
+butaca y la inversión de los dos ejes, verificados después contra el sitio real.
 
 ## Licencia
 
