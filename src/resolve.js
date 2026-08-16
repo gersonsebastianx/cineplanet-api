@@ -147,6 +147,22 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Sólo hay parecido, no certeza. Antes esto se resolvía en silencio y de ahí
+  // salieron las respuestas seguras y equivocadas: preguntar cuesta un toque.
+  if (fresco.movie && fresco.movieConfianza === 'media') {
+    const opciones = fresco.movieAlternativas.slice(0, 3).map((m) => ({ nombre: m.title }));
+    return {
+      estado: 'confirmar',
+      pregunta:
+        opciones.length > 1
+          ? '¿Cuál de estas quieres ver?'
+          : `¿Te refieres a ${fresco.movie.title}?`,
+      opciones,
+      intent,
+      contexto: recordar({ ...intent, movie: null }),
+    };
+  }
+
   // Nombró algo que no está en cartelera. Heredar la película del turno anterior
   // produce una respuesta segura y equivocada: preguntó por una y se le contesta
   // por otra. Mejor decir que no se encontró.

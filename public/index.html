@@ -500,7 +500,7 @@ function tarjeta(r) {
 function responder(r) {
   if (r.contexto) contexto = r.contexto;
   if (r.estado === 'falta') return decir(r.pregunta);
-  if (r.estado === 'cartelera') {
+  if (r.estado === 'cartelera' || r.estado === 'confirmar') {
     decir(r.pregunta);
     const fila = el('div', 'opciones');
     for (const o of r.opciones) {

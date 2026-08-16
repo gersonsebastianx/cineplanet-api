@@ -156,6 +156,17 @@ funcionó"— no la mera presencia de configuración.
 
 ---
 
+## Estado
+
+**Causas 1 y 2 — resueltas** (2026-08-15). La coincidencia ahora exige evidencia
+positiva: un parecido suelto no elige título, y las palabras frecuentes del
+español no aportan parecido. Cuando la única evidencia es aproximada, la
+respuesta es `confirmar` — «¿Te refieres a La Odisea?»— en vez de una
+afirmación.
+
+**Causa 6 — resuelta.** Las pruebas viven en `test/` y corren con `npm test`.
+Cada error reportado entra como caso antes de arreglarse.
+
 ## En qué orden vale la pena atacarlo
 
 1. **Causa 1 y 2 juntas** — es un solo cambio en la función de coincidencia y

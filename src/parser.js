@@ -41,6 +41,41 @@ const STOP = new Set(
 
 const tokens = (s) => norm(s).split(' ').filter((w) => w && !STOP.has(w));
 
+// Palabras frecuentes del español. NO se usan para descartar títulos: una
+// película puede llamarse "Zona Cero" y encontrarse escribiéndolo exacto. Lo que
+// no pueden hacer es aportar evidencia **aproximada**, que es de donde salían
+// los peores errores: "pero" a una letra de "cero", "nueva" a una de "nueve".
+//
+// A diferencia de la lista de arriba, ésta no crece con la cartelera: es el
+// vocabulario común del idioma y se escribe una vez.
+const COMUNES = new Set(
+  ('pero pera peso peor pero cero caso cosa casa como cuma toma tema tomo todo toda ' +
+    'nueva nuevo nueve nada nadie noche norte parte parte pare pase paso pega pena ' +
+    'vida vive vino visto veces vez vaya vale valor verde viene vuelta ' +
+    'ante anda ando anos años arte alto alta area ' +
+    'bien bueno buena base bajo baja boca ' +
+    'cada calle campo carta carro casi cerca cielo cien cine claro come cuando cuenta ' +
+    'dado dice dias dice dijo dime dios dolor duda dura ' +
+    'edad ella ellos ente entre eran eres esos esta este esto ' +
+    'fin final fue fuera fuerza forma frente fondo ' +
+    'gana gente golpe gran grande grupo gusto ' +
+    'hace hacia hasta hecho hijo hora hoy hombre ' +
+    'idea igual isla ' +
+    'jamas juego junto ' +
+    'lado largo lejos libre libro linea logra luego lugar luz ' +
+    'malo mano mayor medio mejor menos mesa metro mientras mismo modo momento mucho mundo ' +
+    'nivel nombre nunca ' +
+    'obra ocho once orden otro ' +
+    'padre pais papel para pasa pieza plan plaza pleno poco poder ponen porque pronto puede punto puerta ' +
+    'queda quien quiere ' +
+    'raro razon real resto rico ' +
+    'saber sabe sala salir salvo sino sobre sola solo suelo sueno suerte ' +
+    'tal tanto tarde tener tengo tiempo tiene tipo tira tocar toma torno total trata tres ' +
+    'ultimo unico usar ' +
+    'valor varios veinte venir ver verdad viejo visto voz vuelve ' +
+    'zona').split(' ').filter(Boolean),
+);
+
 const DAYS = ['domingo', 'lunes', 'martes', 'miercoles', 'jueves', 'viernes', 'sabado'];
 const MONTHS = [
   'enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio',
@@ -300,37 +335,55 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
   if (!want.size) return null;
   const glued = list.join('');
   const scored = [];
+
   for (const item of candidates) {
     const have = tokens(label(item));
     if (!have.length) continue;
-    // Se distinguen las coincidencias exactas de las aproximadas: sin eso
-    // "moanna" empata con La Molina y le gana a Salaverry por orden de lista.
+
     const exactos = have.filter((w) => want.has(w));
-    const aprox = have.filter((w) => !want.has(w) && list.some((q) => closeEnough(q, w)));
-    let hits = [...exactos, ...aprox];
-    let peso = exactos.length + aprox.length * 0.8;
-    // "spiderman" pegado debe encontrar "Spider man Un nuevo dia": se comparan
-    // sin espacios, en ambos sentidos, con largo mínimo para no unir cualquier cosa.
+    // Una palabra común del idioma no puede aportar parecido: de ahí salían
+    // "pero"→"cero" y "nueva"→"nueve".
+    const aprox = have.filter(
+      (w) =>
+        !want.has(w) &&
+        list.some((q) => !COMUNES.has(q) && q.length >= 5 && closeEnough(q, w)),
+    );
     const haveGlued = have.join('');
-    if (!hits.length && have.length > 1 && glued.length >= 6) {
-      if (glued.includes(haveGlued) || haveGlued.startsWith(glued)) {
-        hits = have;
-        peso = have.length;
-      }
-    }
-    if (!hits.length) continue;
-    // Sólo palabras distintivas eligen sede: si no, "jesús maría" termina en
-    // Villa María del Triunfo, que es otro distrito y otra punta de la ciudad.
+    const pegado =
+      !exactos.length &&
+      !aprox.length &&
+      have.length > 1 &&
+      glued.length >= 6 &&
+      (glued.includes(haveGlued) || haveGlued.startsWith(glued));
+
+    // Evidencia positiva: sin esto no hay candidato, por muy alto que puntúe.
+    // Un parecido suelto sólo vale si la palabra es larga y distintiva.
+    const hay =
+      exactos.length > 0 ||
+      pegado ||
+      aprox.length >= 2 ||
+      (aprox.length === 1 && aprox[0].length >= 5);
+    if (!hay) continue;
+
+    const hits = pegado ? have : [...exactos, ...aprox];
     if (weak && hits.every((w) => weak.has(w))) continue;
-    // Premia cubrir el nombre completo; así "toy story" no pierde con "toy".
+
+    const peso = pegado ? have.length : exactos.length + aprox.length * 0.8;
     const score = peso / have.length + hits.length * 0.1;
-    if (score >= minScore) scored.push({ item, score, hits });
+    if (score < minScore) continue;
+    // Cuando la única evidencia es aproximada no hay certeza, hay sospecha.
+    const confianza = exactos.length || pegado ? 'alta' : 'media';
+    scored.push({ item, score, hits, confianza });
   }
+
   scored.sort((a, b) => b.score - a.score);
   if (!scored.length) return null;
-  // Empate real = pregunta, no adivinanza: "real plaza" son seis sedes.
+
   const top = scored[0];
   top.tied = scored.filter((s) => s.score >= top.score - 0.01).map((s) => s.item);
+  // Dos candidatos casi iguales tampoco son una certeza.
+  if (top.tied.length > 1 && top.confianza === 'alta') top.confianza = 'media';
+  top.alternativas = scored.slice(0, 3).map((s) => s.item);
   return top;
 }
 
@@ -405,6 +458,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
 
   return {
     movie: movieHit?.item ?? null,
+    movieConfianza: movieHit?.confianza ?? null,
+    movieAlternativas: movieHit?.alternativas ?? [],
     cinema: cinemaHit?.item ?? null,
     // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
     cinemaOptions: cinemaHit && cinemaHit.tied.length > 1 ? cinemaHit.tied : null,
