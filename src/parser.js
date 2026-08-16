@@ -32,6 +32,9 @@ const STOP = new Set(
     'aun todavia sigue siguen continua cartelera cartera estreno estrenos ' +
     'primera segunda tercera ultima ultimo esa ese eso aquella aquel ' +
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
+    // "Vi que en Cineplanet Magdalena sí estaba": nada de eso es un título.
+    'cineplanet cineplanets vi vimos creo parece dice decia estaba estaban ' +
+    'fui fuimos quiero queria quisiera puedo podria seria mejor solo solamente ' +
     // Artículos en inglés: "the odyssey" encontraba "THE MAN I LOVE".
     'the a of in on at and for to my i').split(' '),
 );
@@ -345,6 +348,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Un distrito sin sede propia igual dice dónde está la persona.
   const t = norm(text);
   const genero = GENEROS.find((g) => g.pide.test(norm(text))) ?? null;
+  // Lo que disparó el género ya está explicado: "niños" no es un título.
+  const dichoGenero = genero ? (genero.pide.exec(norm(text))?.[0] ?? '') : '';
   const ciudadSinSede = Object.keys(CIUDADES_SIN_SEDE).find((c) =>
     new RegExp(`\\b${c}\\b`).test(norm(text)),
   );
@@ -390,6 +395,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(cinemaHit ? cinemaHit.hits : []),
     ...(district ? tokens(district) : []),
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
+    ...tokens(dichoGenero),
     ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
   ]);
   const sobrantes = tokens(text).filter((w) => !atribuidas.has(w) && w.length >= 4);

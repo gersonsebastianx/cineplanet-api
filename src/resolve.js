@@ -133,13 +133,37 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.
+  // Sólo si lo nombró en este mensaje: unas coordenadas heredadas del turno
+  // anterior no son un distrito recién mencionado.
+  if (!intent.cinema && intent.district && intent.districtCoords) {
+    const cerca = nearest(cinemaList, intent.districtCoords, 3);
+    return {
+      estado: 'elige-cine',
+      pregunta: `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
+      opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km })),
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+
   // Nombró algo que no está en cartelera. Heredar la película del turno anterior
   // produce una respuesta segura y equivocada: preguntó por una y se le contesta
   // por otra. Mejor decir que no se encontró.
   if (!fresco.movie && fresco.sobrantes.length) {
     const dicho = fresco.sobrantes.join(' ');
-    const enCartelera = await loMasDado(movieList, intent.cinema?.id, today);
-    const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
+    // Sin saber dónde va a ir, listar cartelera es listar la de otra punta del
+    // país: qué se da depende del distrito.
+    if (!intent.cinema) {
+      return {
+        estado: 'falta',
+        pregunta: `Lo siento, «${dicho}» no está en cartelera. ¿En qué distrito vas al cine? Te digo qué hay ahí.`,
+        intent,
+        contexto: recordar({ ...intent, movie: null }),
+      };
+    }
+    const enCartelera = await loMasDado(movieList, intent.cinema.id, today);
+    const donde = ` en ${intent.cinema.name}`;
     if (enCartelera.length) {
       return {
         estado: 'cartelera',
@@ -240,20 +264,6 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
       opciones: alternativas.map((m) => ({ nombre: m.titulo })),
       intent,
       contexto: recordar({ ...intent, movie: null }),
-    };
-  }
-
-  // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.
-  // Sólo si lo nombró en este mensaje: unas coordenadas heredadas del turno
-  // anterior no son un distrito recién mencionado.
-  if (!intent.cinema && intent.district && intent.districtCoords) {
-    const cerca = nearest(cinemaList, intent.districtCoords, 3);
-    return {
-      estado: 'elige-cine',
-      pregunta: `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
-      opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km })),
-      intent,
-      contexto: recordar(intent),
     };
   }
 
