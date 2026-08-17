@@ -227,3 +227,25 @@ test('decir cuántos van no deja palabras sin explicar', () => {
     assert.deepEqual(leer(f).sobrantes, [], f);
   }
 });
+
+test('«iré con mi amigo» son dos, aunque venga con tipeo', () => {
+  // Reportado: "ire ocn mi amigo" ofreció elegir entre Mi Vecino Totoro y
+  // Juan Gabriel — "mi" coincidía con los títulos y nadie contó al amigo.
+  for (const f of ['ire ocn mi amigo', 'iré con mi amigo', 'voy con mi hermana', 'con mi mamá']) {
+    assert.equal(leer(f).seats, 2, f);
+  }
+});
+
+test('«mi» sola no elige película', () => {
+  const r = leer('ire ocn mi amigo');
+  assert.equal(r.movie, null);
+  assert.deepEqual(r.movieSugerencias, [], 'un posesivo no es una pista de título');
+});
+
+test('«con mis amigos» no inventa cuántos son', () => {
+  assert.equal(leer('voy con mis amigos').seats, null, 'en plural hay que preguntar');
+});
+
+test('el título sigue ganando cuando de verdad empieza con «mi»', () => {
+  assert.equal(leer('mi vecino totoro en salaverry').movie?.title, 'Mi Vecino Totoro');
+});

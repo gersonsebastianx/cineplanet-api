@@ -32,6 +32,8 @@ const STOP = new Set(
     'aun todavia sigue siguen continua cartelera cartera estreno estrenos ' +
     'primera segunda tercera ultima ultimo esa ese eso aquella aquel ' +
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
+    // Posesivos: "mi" coincidía con "Mi Vecino Totoro" y con media cartelera.
+    'mi mis tu tus su sus nuestro nuestra nuestros nuestras ' +
     // "Vi que en Cineplanet Magdalena sí estaba": nada de eso es un título.
     'cineplanet cineplanets vi vimos creo parece dice decia estaba estaban ' +
     // Pedir una recomendación no es nombrar una película.
@@ -495,6 +497,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // mismo que "para 1 persona" y se ignoraban, así que seguía sugiriendo dos.
   const t2 = norm(text);
   const pareja = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/.test(t2);
+  // "iré con mi amigo" son dos entradas. Se acepta sin el "con" porque el tipeo
+  // es frecuente —"ire ocn mi amigo"— y "mi amigo" ya dice que no va solo.
+  const acompanado =
+    /\b(con\s+)?(mi|un[ao])\s+(amig[ao]|herman[ao]|prim[ao]|mama|papa|madre|padre|hij[ao]|novi[ao]|espos[ao]|pareja|enamorad[ao]|ti[ao]|abuel[ao])\b/.exec(t2);
+  // En plural no dice cuántos: mejor preguntar que suponer.
+  const enGrupoVago = /\b(con\s+)?(mis|unos|unas)\s+(amig[oa]s|herman[oa]s|prim[oa]s|hij[oa]s)\b/.test(t2);
   const solo =
     /\b(ire|ir|voy|iba|estare|estoy|vengo|vere|veo)\s+sol[oa]s?\b/.test(t2) ||
     /\b(yo\s+sol[oa]|sol[oa]\s+yo|sol[oa]\s+nomas)\b/.test(t2) ||
@@ -515,6 +523,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...tokens(idioma ? (idioma.pide.exec(norm(text))?.[0] ?? '') : ''),
     // "somos 3" y "voy solo" dicen cuántos van: no son un título desconocido.
     ...tokens(grupo?.[0] ?? ''),
+    ...tokens(acompanado?.[0] ?? ''),
+    ...(enGrupoVago ? ['amigos', 'amigas', 'hermanos', 'primos', 'hijos'] : []),
     ...(solo ? ['solo', 'sola', 'ire', 'voy', 'yo', 'nomas', 'vengo', 'estoy'] : []),
     ...(pareja ? ['mi', 'con', 'novia', 'novio', 'esposa', 'esposo', 'pareja'] : []),
     ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
@@ -540,7 +550,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     to,
     // Nadie compra 50 butacas juntas por chat, y 0 rompe la búsqueda de bloques.
     seats: acotarPersonas(
-      people ? +people[1] : worded ? worded[1] : cuantosGrupo ?? (solo ? 1 : pareja ? 2 : null),
+      people
+        ? +people[1]
+        : worded
+          ? worded[1]
+          : (cuantosGrupo ??
+            (solo ? 1 : enGrupoVago ? null : acompanado || pareja ? 2 : null)),
     ),
     lugarDesconocido,
     sobrantes,
