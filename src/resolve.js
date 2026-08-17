@@ -157,6 +157,20 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Una sede parecida es más peligrosa que una película parecida: mandar a
+  // alguien de Puente Piedra a Piura son mil kilómetros, y la respuesta se ve
+  // igual de segura que si fuera correcta.
+  if (fresco.cinema && fresco.cinemaConfianza === 'media') {
+    return {
+      estado: 'confirmar',
+      pregunta: `¿Te refieres a ${fresco.cinema.name}?`,
+      opciones: [{ id: fresco.cinema.id, nombre: fresco.cinema.name, ciudad: fresco.cinema.city }],
+      intent,
+      // Se olvida la sede dudosa: si no era esa, heredarla repetiría el error.
+      contexto: recordar({ ...intent, cinema: null, districtCoords: null }),
+    };
+  }
+
   // Sólo hay parecido, no certeza. Antes esto se resolvía en silencio y de ahí
   // salieron las respuestas seguras y equivocadas: preguntar cuesta un toque.
   if (fresco.movie && fresco.movieConfianza === 'media') {

@@ -106,6 +106,40 @@ export const DISTRICTS = {
   independencia: [-11.9889, -77.0553],
   chosica: [-11.9403, -76.6975],
   barranca: [-10.7503, -77.7614],
+  // Lima norte y este, que es de donde venían los peores desvíos: "puente
+  // piedra" se parecía a "piura" y mandaba a mil kilómetros.
+  'puente piedra': [-11.8664, -77.0761],
+  carabayllo: [-11.8564, -77.0364],
+  'santa rosa': [-11.7986, -77.1683],
+  ancon: [-11.7756, -77.1761],
+  'santa anita': [-12.0475, -76.9714],
+  'el agustino': [-12.0428, -77.0006],
+  'san luis': [-12.0756, -76.9992],
+  chaclacayo: [-11.9836, -76.7686],
+  cieneguilla: [-12.1147, -76.8103],
+  pachacamac: [-12.2286, -76.8672],
+  'villa el salvador norte': [-12.2136, -76.9364],
+  'san bartolo': [-12.3878, -76.7797],
+  punta_hermosa: [-12.3364, -76.8236],
+  // Callao, que la gente nombra como distrito propio.
+  callao: [-12.0567, -77.1181],
+  'carmen de la legua': [-12.0392, -77.0894],
+  'mi peru': [-11.8511, -77.1156],
+  // Otras ciudades del norte y sur sin sede, frecuentes en conversación.
+  huacho: [-11.1067, -77.6053],
+  canete: [-13.0778, -76.3861],
+  chincha: [-13.4097, -76.1319],
+  paracas: [-13.8342, -76.2497],
+  nazca: [-14.8292, -74.9367],
+  moyobamba: [-6.0342, -76.9714],
+  yurimaguas: [-5.9008, -76.1153],
+  talara: [-4.5772, -81.2719],
+  ilo: [-17.6394, -71.3375],
+  'la oroya': [-11.5222, -75.9022],
+  tarma: [-11.4192, -75.6906],
+  huanta: [-12.9403, -74.2478],
+  andahuaylas: [-13.6558, -73.3872],
+  sicuani: [-14.2694, -71.2264],
 };
 
 // Ciudades grandes del Perú donde Cineplanet no tiene sede. Sin esta lista, "en
@@ -581,6 +615,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   const district = Object.keys(DISTRICTS)
     .filter((d) => new RegExp(`\\b${d}\\b`).test(t))
     .sort((a, b) => b.length - a.length)[0] ?? null;
+  // Un lugar dicho con todas sus letras le gana a una sede que sólo se parece:
+  // "puente piedra" es un distrito exacto y `piedra`→`piura` es un parecido.
+  if ((district || ciudadConSede) && cinemaHit && cinemaHit.confianza !== 'alta') {
+    cinemaHit = null;
+  }
+
   const { date, said: dateSaid, imposible: fechaImposible } = parseDate(text, today);
   const { from, to, said: timeSaid, imposible: horaImposible } = parseTime(text);
 
@@ -679,6 +719,10 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     movieAlternativas: movieHit?.alternativas ?? [],
     movieSugerencias: movieHit?.sugerencias ?? [],
     cinema: cinemaHit?.item ?? null,
+    // Igual que con las películas: un parecido no es una certeza. "puente
+    // piedra" caía en CP Piura —a mil kilómetros— porque `piedra` está a dos
+    // letras de `piura`, y se respondía sin dudar.
+    cinemaConfianza: cinemaHit?.item ? (cinemaHit.confianza ?? 'alta') : null,
     // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
     cinemaOptions: cinemaHit?.tied?.length > 1 ? cinemaHit.tied : null,
     district: district ?? ciudadSinSede ?? ciudadConSede?.nombre ?? null,

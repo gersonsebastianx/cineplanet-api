@@ -330,3 +330,28 @@ test('una ciudad sin sede sigue diciéndolo', () => {
   const r = leer('iquitos');
   assert.equal(r.lugarConSede, 0, 'no se puede prometer un cine que no existe');
 });
+
+// ── Un lugar dicho entero le gana a una sede que sólo se parece ─────────────
+
+test('«puente piedra» no manda a CP Piura', () => {
+  // Reportado desde la web: alguien de Lima norte terminaba a mil kilómetros
+  // porque `piedra` está a dos letras de `piura`.
+  for (const f of ['puente piedra', 'vivo en puente piedra']) {
+    const r = leer(f);
+    assert.equal(r.cinema, null, f);
+    assert.equal(r.district, 'puente piedra', f);
+  }
+});
+
+test('una sede sólo parecida se pregunta, no se decide', () => {
+  // Mandar a alguien al cine equivocado cuesta más que una pregunta de más.
+  const r = leer('quiero ver algo en salaverri');
+  assert.equal(r.cinema?.name, 'CP Salaverry');
+  assert.equal(r.cinemaConfianza, 'media');
+});
+
+test('la sede escrita bien sigue sin preguntar nada', () => {
+  for (const f of ['la odisea en salaverry', 'la odisea en trujillo', 'harry potter en san miguel']) {
+    assert.equal(leer(f).cinemaConfianza, 'alta', f);
+  }
+});
