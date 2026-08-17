@@ -167,6 +167,24 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Pidió una recomendación, no una película: tratar "recomiendes" como título
+  // y contestar que no está en cartelera es entender lo contrario de lo dicho.
+  if (fresco.pideRecomendacion && !fresco.movie) {
+    const cine = intent.cinema;
+    const lista = await loMasDado(movieList, cine?.id, today, 6);
+    if (lista.length) {
+      return {
+        estado: 'cartelera',
+        pregunta: cine
+          ? `Lo más visto en ${cine.name} ahora mismo:`
+          : 'Lo más visto ahora mismo:',
+        opciones: lista.map((m) => ({ nombre: m.titulo })),
+        intent,
+        contexto: recordar({ ...intent, movie: null }),
+      };
+    }
+  }
+
   // Hay un parecido que no alcanzó para elegir. Antes se descartaba y se
   // respondía "no está en cartelera", tirando la única pista útil.
   if (!fresco.movie && fresco.movieSugerencias?.length) {

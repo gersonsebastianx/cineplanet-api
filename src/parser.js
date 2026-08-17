@@ -34,6 +34,9 @@ const STOP = new Set(
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
     // "Vi que en Cineplanet Magdalena sí estaba": nada de eso es un título.
     'cineplanet cineplanets vi vimos creo parece dice decia estaba estaban ' +
+    // Pedir una recomendación no es nombrar una película.
+    'recomienda recomiendas recomiendes recomiendame recomendacion recomendaciones ' +
+    'sugieres sugiere sugerencia opciones alternativa alternativas cual cuales ' +
     'fui fuimos quiero queria quisiera puedo podria seria mejor solo solamente ' +
     // Artículos en inglés: "the odyssey" encontraba "THE MAN I LOVE".
     'the a of in on at and for to my i').split(' '),
@@ -425,9 +428,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     weak: WEAK_VENUE,
     minScore: 0.45,
   });
-  const cinemaHit = porNombre?.item ? porNombre : porDistrito?.item ? porDistrito : null;
+  let cinemaHit = porNombre?.item ? porNombre : porDistrito?.item ? porDistrito : null;
   // Un distrito sin sede propia igual dice dónde está la persona.
   const t = norm(text);
+  // "¿qué otra me recomiendas?" pide una lista, no una película concreta.
+  const pideRecomendacion =
+    /\b(recomien|recomend|sugier|sugerenc|que\s+otra|otra\s+opcion|opciones)/.test(norm(text));
   const genero = GENEROS.find((g) => g.pide.test(norm(text))) ?? null;
   const formato = FORMATOS.find((f) => f.pide.test(norm(text))) ?? null;
   const idioma = IDIOMAS.find((i) => i.pide.test(norm(text))) ?? null;
@@ -471,6 +477,20 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     }
   }
 
+  // El título puede robarle palabras a la sede: "la piedra filosofal" se parece
+  // a "Piura" y mandaba a alguien de San Miguel a otra ciudad. Con la película
+  // ya elegida, la sede se recalcula sin las palabras del título.
+  if (movieHit?.item) {
+    const delTitulo = new Set(tokens(movieHit.item.title));
+    const sinTitulo = tokens(text)
+      .filter((w) => !delTitulo.has(w))
+      .join(' ');
+    const otra =
+      bestByTokens(sinTitulo, cinemas, (c) => c.name, { weak: WEAK_VENUE, minScore: 0.45 }) ??
+      bestByTokens(sinTitulo, cinemas, (c) => c.district ?? '', { weak: WEAK_VENUE, minScore: 0.45 });
+    cinemaHit = otra?.item ? otra : null;
+  }
+
   // Palabras que no se pudieron atribuir a nada: probablemente sean un título
   // que no está en cartelera. Sirven para no rellenar con la película anterior.
   const atribuidas = new Set([
@@ -511,6 +531,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     sobrantes,
     formato: formato ? { valor: formato.valor, dice: formato.dice } : null,
     idioma: idioma ? { valor: idioma.valor, dice: idioma.dice } : null,
+    pideRecomendacion,
     genero: genero
       ? { generos: genero.generos, apt: !!genero.apt, dice: genero.dice, nada: genero.nada }
       : null,

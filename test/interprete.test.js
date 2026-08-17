@@ -179,3 +179,27 @@ test('una pista hecha sólo de palabras comunes no se sugiere', () => {
   // "pero" coincide exacto con "Separada pero nunca sola" y no significa nada.
   assert.deepEqual(leer('Pero en cineplanet magdalena vi que sí').movieSugerencias, []);
 });
+
+// ── El título no puede robarle palabras a la sede ────────────────────────────
+
+test('«la piedra filosofal» no manda a CP Piura', () => {
+  // Reportado: al elegir Harry Potter desde la cartelera de San Miguel, salía
+  // una función de Piura porque "piedra" está a dos letras de "piura".
+  const r = leer('Harry Potter y la piedra filosofal [2001]');
+  assert.match(r.movie?.title ?? '', /Harry Potter/);
+  assert.equal(r.cinema, null, 'el título no nombra ninguna sede');
+});
+
+test('la sede dicha sigue ganando cuando sí se nombra', () => {
+  assert.equal(leer('harry potter en san miguel').cinema?.name, 'CP San Miguel');
+});
+
+// ── Pedir una recomendación no es nombrar una película ──────────────────────
+
+for (const frase of ['Otra película qué recomiendes?', 'qué me recomiendas?', 'otra opción?']) {
+  test(`«${frase}» se entiende como pedido de recomendación`, () => {
+    const r = leer(frase);
+    assert.equal(r.pideRecomendacion, true);
+    assert.equal(r.movie, null);
+  });
+}
