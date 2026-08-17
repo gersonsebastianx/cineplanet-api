@@ -31,6 +31,46 @@ const activo = () => conCuentaDeServicio() || !!process.env.BITACORA_URL;
 const b64url = (buf) =>
   Buffer.from(buf).toString('base64').replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
+/**
+ * Deja el PEM como lo espera `createSign`, tolerando cómo se rompe al copiarlo
+ * del JSON a un campo de una sola línea:
+ *
+ *   - los saltos vienen escapados como \n (lo normal)
+ *   - vienen las comillas del JSON, o la coma final
+ *   - los saltos se perdieron y quedó todo en una línea
+ *
+ * Lo último es el que costó una tarde: sin saltos, OpenSSL responde
+ * "DECODER routines::unsupported", que no dice nada sobre la causa.
+ */
+export function normalizarClave(bruta) {
+  let k = (bruta ?? '').trim();
+  k = k.replace(/,$/, '').replace(/^["']|["']$/g, '');
+  k = k.replace(/\\n/g, '\n');
+  const cuerpo = k
+    .replace(/-----BEGIN [^-]+-----/, '')
+    .replace(/-----END [^-]+-----/, '')
+    .replace(/\s+/g, '');
+  const tipo = /BEGIN RSA PRIVATE KEY/.test(k) ? 'RSA PRIVATE KEY' : 'PRIVATE KEY';
+  if (!cuerpo) return k;
+  // Se rearma siempre: así da igual si venía en una línea, en varias o con
+  // espacios de más al pegar.
+  const lineas = cuerpo.match(/.{1,64}/g).join('\n');
+  return `-----BEGIN ${tipo}-----\n${lineas}\n-----END ${tipo}-----\n`;
+}
+
+/** Cómo se ve la clave configurada, sin revelarla: para diagnosticar a ciegas. */
+export function formaDeLaClave() {
+  const k = process.env.GOOGLE_SA_KEY ?? '';
+  return {
+    largo: k.length,
+    empiezaBien: k.trim().replace(/^["']/, '').startsWith('-----BEGIN'),
+    terminaBien: /-----\s*["']?,?$/.test(k.trim()),
+    saltosEscapados: k.includes('\\n'),
+    saltosReales: k.includes('\n'),
+    comillas: /^["']|["']$/.test(k.trim()),
+  };
+}
+
 let token = null; // { valor, expira }
 
 async function accessToken() {
@@ -47,8 +87,7 @@ async function accessToken() {
       exp: ahora + 3600,
     }),
   );
-  // Las variables de entorno guardan los saltos de línea escapados.
-  const clave = process.env.GOOGLE_SA_KEY.replace(/\\n/g, '\n');
+  const clave = normalizarClave(process.env.GOOGLE_SA_KEY);
   const firma = createSign('RSA-SHA256').update(`${cabecera}.${cuerpo}`).sign(clave);
   const jwt = `${cabecera}.${cuerpo}.${b64url(firma)}`;
 

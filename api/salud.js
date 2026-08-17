@@ -25,7 +25,7 @@ export default async function handler(req, res) {
       estado.prueba = { error: 'clave incorrecta' };
       return res.status(200).json(estado);
     }
-    const { anotar } = await import('../src/bitacora.js');
+    const { anotar, formaDeLaClave } = await import('../src/bitacora.js');
     const r = await anotar({
       sesion: 'diagnostico',
       texto: 'escritura de prueba',
@@ -33,7 +33,14 @@ export default async function handler(req, res) {
     });
     estado.prueba = r?.ok
       ? { via: r.via, escrita: true }
-      : { via: r?.via ?? 'cuenta-de-servicio', escrita: false, error: r?.detalle ?? 'sin respuesta' };
+      : {
+          via: r?.via ?? 'cuenta-de-servicio',
+          escrita: false,
+          error: r?.detalle ?? 'sin respuesta',
+          // Un PEM mal pegado falla con un error de OpenSSL que no dice nada.
+          // Esto describe la forma del valor sin revelar ni un carácter.
+          clave: formaDeLaClave(),
+        };
     return res.status(200).json(estado);
   }
   if (pedido && process.env.BITACORA_TOKEN && pedido === process.env.BITACORA_TOKEN) {
