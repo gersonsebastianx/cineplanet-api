@@ -10,8 +10,21 @@ const FREE = 0;
 const TAKEN = 1;
 const ACCESSIBLE = 3;
 
+/** Función agotada: Cineplanet la marca con su propio código. */
+export class SalaAgotada extends Error {
+  constructor() {
+    super('la función está agotada');
+    this.agotada = true;
+  }
+}
+
 export async function seatMap(cinemaId, sessionId) {
   const plan = await getSeatPlan(cinemaId, sessionId);
+  // Sin esto, una función agotada se veía igual que un fallo de red y la
+  // interfaz ofrecía comprar butacas que no existen.
+  if (plan.ResponseCode === '67' || /sold\s*out/i.test(plan.ErrorDescription ?? '')) {
+    throw new SalaAgotada();
+  }
   if (plan.ResponseCode !== '0') {
     throw new Error(plan.ErrorDescription || 'Cineplanet no entregó el mapa de butacas');
   }

@@ -154,3 +154,12 @@ test('pedir formato o idioma no deja palabras sin explicar', () => {
     assert.deepEqual(leer(f).sobrantes, [], f);
   }
 });
+
+// ── Funciones agotadas y sin butacas juntas ──────────────────────────────────
+
+test('una función agotada se distingue de un fallo de red', async () => {
+  const { SalaAgotada } = await import('../src/seatmap.js');
+  const agotada = new SalaAgotada();
+  assert.equal(agotada.agotada, true);
+  assert.ok(agotada instanceof Error);
+});

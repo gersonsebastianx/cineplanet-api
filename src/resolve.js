@@ -5,7 +5,7 @@
 // la conversación sirva en vez de frustrar.
 
 import { movies, cinemas, showtimes, nearest } from './catalog.js';
-import { seatMap, bestBlocks } from './seatmap.js';
+import { seatMap, bestBlocks, SalaAgotada } from './seatmap.js';
 import { parse, limaToday } from './parser.js';
 
 const MISSING = {
@@ -443,31 +443,70 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
-  const elegida = elegidas[0];
-  const asientos = intent.seats ?? 2;
+  // Una función agotada no sirve de nada: se descarta y se sigue con la
+  // siguiente. Antes se ofrecía igual, con botón de comprar y todo.
+  let elegida = null;
   let mapa = null;
-  try {
-    const map = await seatMap(elegida.cinemaId, elegida.sessionId);
-    // Siempre se buscan hasta tres bloques distintos; que haya dos o uno lo
-    // decide la sala, no un umbral inventado. Si sólo hay una zona buena, se
-    // ofrece una y ya.
-    mapa = {
-      sala: map.screen,
-      libres: map.free,
-      total: map.total,
-      sugeridas: bestBlocks(map, asientos, 3),
-      filas: map.rows.map((r) => ({
-        fila: r.label,
-        ancho: r.width,
-        celdas: Array.from({ length: r.width }, (_, x) => {
-          const s = r.seats.find((q) => q.x === x);
-          return !s ? null : { n: s.number, id: s.id, libre: s.free, acc: s.accessible };
+  let agotadas = 0;
+  let falloMapa = null;
+  let respaldo = null;
+  let sueltas = false;
+  const asientos = intent.seats ?? 2;
+
+  for (const candidata of elegidas) {
+    try {
+      const map = await seatMap(candidata.cinemaId, candidata.sessionId);
+      // Siempre se buscan hasta tres bloques distintos; que haya dos o uno lo
+      // decide la sala, no un umbral inventado.
+      mapa = {
+        sala: map.screen,
+        libres: map.free,
+        total: map.total,
+        sugeridas: bestBlocks(map, asientos, 3),
+        filas: map.rows.map((r) => ({
+          fila: r.label,
+          ancho: r.width,
+          celdas: Array.from({ length: r.width }, (_, x) => {
+            const s = r.seats.find((q) => q.x === x);
+            return !s ? null : { n: s.number, id: s.id, libre: s.free, acc: s.accessible };
         }),
-      })),
+        })),
+      };
+      // Una función sin butacas juntas no sirve para el grupo: se guarda por si
+      // no hay nada mejor, y se sigue buscando.
+      if (!mapa.sugeridas.length) {
+        if (!respaldo) respaldo = { candidata, mapa };
+        mapa = null;
+        continue;
+      }
+      elegida = candidata;
+      break;
+    } catch (err) {
+      if (err instanceof SalaAgotada) {
+        agotadas += 1;
+        continue;
+      }
+      // Otro fallo del mapa no invalida la función: se ofrece igual y se avisa.
+      falloMapa = 'no pude cargar el mapa de butacas';
+      elegida = candidata;
+      break;
+    }
+  }
+  if (!elegida && respaldo) {
+    elegida = respaldo.candidata;
+    mapa = respaldo.mapa;
+    sueltas = true;
+  }
+  if (!elegida) {
+    return {
+      estado: 'sin-cartelera',
+      mensaje:
+        agotadas === 1
+          ? `Esa función de ${intent.movie.title} está agotada.`
+          : `Las ${agotadas} funciones de ${intent.movie.title} que encontré están agotadas.`,
+      intent,
+      contexto: recordar(intent),
     };
-  } catch {
-    // El mapa es un extra: sin él la respuesta sigue sirviendo para comprar.
-    mapa = null;
   }
 
   // Lo heredado del turno anterior se nombra. Rellenar en silencio es lo que
@@ -480,6 +519,9 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   // respuesta pareciera sorda aunque fuera correcta.
   const noUsado = [];
   if (cedido.length) noUsado.push(`no hay funciones ${cedido.join(' ni ')}`);
+  if (falloMapa) noUsado.push(falloMapa);
+  if (sueltas) noUsado.push(`sólo quedan butacas sueltas, no ${asientos} juntas`);
+  if (agotadas) noUsado.push(agotadas === 1 ? 'la anterior estaba agotada' : `${agotadas} funciones antes estaban agotadas`);
   if (fresco.sobrantes.length) noUsado.push(`no entendí «${fresco.sobrantes.join(' ')}»`);
 
   return {
