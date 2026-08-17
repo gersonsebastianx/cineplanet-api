@@ -355,3 +355,27 @@ test('la sede escrita bien sigue sin preguntar nada', () => {
     assert.equal(leer(f).cinemaConfianza, 'alta', f);
   }
 });
+
+// ── Franjas abiertas: "de 6pm en adelante" ─────────────────────────────────
+
+test('«de 6pm en adelante» se entiende y no deja palabras sueltas', () => {
+  // Reportado por una amiga desde la web: "una como para las 6pm en adelante
+  // o 5 pm" contestaba que «adelante» no está en cartelera.
+  const r = leer('una como para las 6pm en adelante o 5 pm');
+  assert.equal(hm(r.from), '18:00');
+  assert.equal(hm(r.to), '24:00');
+  assert.deepEqual(r.sobrantes, []);
+  assert.equal(r.movie, null);
+});
+
+test('las palabras que acompañan una hora nunca son un título', () => {
+  for (const f of [
+    'de 5 para adelante',
+    'a partir de las 7',
+    'desde las 5',
+    'antes de las 4',
+    'la odisea entre 4 y 6 en salaverry',
+  ]) {
+    assert.deepEqual(leer(f).sobrantes, [], f);
+  }
+});

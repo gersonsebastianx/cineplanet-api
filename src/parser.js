@@ -30,6 +30,10 @@ const STOP = new Set(
     // Muletillas de seguimiento: "¿aún está en cartelera X?" no habla de una
     // película llamada "aún" ni "cartelera".
     'aun todavia sigue siguen continua cartelera cartera estreno estrenos ' +
+    // Conectores de hora. Sin esto "de 6pm en adelante" contestaba que
+    // «adelante» no está en cartelera: la palabra sobraba y se leía como título.
+    'adelante partir desde despues antes hasta entre tipo aproximadamente alrededor ' +
+    'temprano luego rato horario horarios funcion funciones franja ' +
     'primera segunda tercera ultima ultimo esa ese eso aquella aquel ' +
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
     // Posesivos: "mi" coincidía con "Mi Vecino Totoro" y con media cartelera.
@@ -299,6 +303,20 @@ function parseTime(text) {
       else from -= 12 * 60;
     }
     return { from, to, said: `entre las ${between[1]} y ${between[3]}` };
+  }
+
+  // "de 6pm en adelante" es la forma más común de pedir una franja abierta y no
+  // se entendía: la hora se perdía entera y "adelante" viajaba como si fuera un
+  // título. Va antes que las demás porque la pista está al final de la frase.
+  const enAdelante =
+    /\b(?:de|desde|a\s+partir\s+de)?\s*(?:las?\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?\s*(?:en\s+adelante|para\s+adelante|pa\s+adelante)/.exec(t);
+  if (enAdelante) {
+    const end = enAdelante.index + enAdelante[0].length;
+    return {
+      from: to24(+enAdelante[1], t, end) * 60 + (+enAdelante[2] || 0),
+      to: 24 * 60,
+      said: `de las ${enAdelante[1]} en adelante`,
+    };
   }
 
   const after = /\b(despues\s+de|a\s+partir\s+de|desde)\s+(?:las?\s+)?(\d{1,2})(?::(\d{2}))?/.exec(t);

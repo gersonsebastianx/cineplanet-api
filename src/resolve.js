@@ -277,16 +277,30 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
           today,
         );
         const delDia = f.filter((s) => s.date === dia);
-        if (delDia.length) enCartelera.push({ titulo: m.title, funciones: delDia.length, rating: m.rating });
+        // Si pidió una franja, la cartelera es la de esa franja. Antes la hora
+        // se entendía y después se tiraba: alguien preguntaba "de 6pm en
+        // adelante" y recibía la lista del día entero, funciones ya pasadas
+        // incluidas.
+        const enFranja =
+          intent.from != null || intent.to != null
+            ? delDia.filter(
+                (s) =>
+                  s.minutes >= (intent.from ?? 0) && s.minutes <= (intent.to ?? 24 * 60),
+              )
+            : delDia;
+        if (enFranja.length)
+          enCartelera.push({ titulo: m.title, funciones: enFranja.length, rating: m.rating });
       }
       if (enCartelera.length) {
         enCartelera.sort((a, b) => b.funciones - a.funciones);
         const cuando = dia === today ? 'hoy' : sayDate(dia, today);
+        // Repetir la franja pedida es lo que deja ver si se entendió bien.
+        const franja = intent.said?.time ? ` ${intent.said.time}` : '';
         return {
           estado: 'cartelera',
           pregunta: intent.genero
-            ? `${frase(intent.genero.dice)} en ${intent.cinema.name} ${cuando}:`
-            : `En ${intent.cinema.name} ${cuando} dan:`,
+            ? `${frase(intent.genero.dice)} en ${intent.cinema.name} ${cuando}${franja}:`
+            : `En ${intent.cinema.name} ${cuando}${franja} dan:`,
           opciones: enCartelera.slice(0, 8).map((m) => ({ nombre: m.titulo, nota: m.rating })),
           intent,
           contexto: recordar(intent),
@@ -295,7 +309,11 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
       if (intent.genero) {
         return {
           estado: 'sin-cartelera',
-          mensaje: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}.`,
+          // Sin nombrar la franja, "no hay nada de terror hoy" es más rotundo de
+          // lo que sabemos: puede haber, sólo que no a la hora pedida.
+          mensaje: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
+            intent.said?.time ? ` ${intent.said.time}` : ''
+          }.`,
           intent,
           contexto: recordar(intent),
         };
