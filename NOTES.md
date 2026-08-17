@@ -110,3 +110,31 @@ el CLI marca `"stale": true` y avisa por stderr la antigüedad en minutos.
 Lo que **no** cubre: los mapas de butacas. Cada `seatplan` es de una sesión
 concreta y sólo queda cacheado si ya se consultó esa sesión antes. Y aunque
 estuviera, la ocupación cambia sola — un mapa viejo no dice qué está libre ahora.
+
+## El circuito: de una queja a una prueba
+
+Cada consulta queda en la bitácora con su estado. Los estados que importan son
+los que dejan a alguien sin respuesta útil:
+
+| Estado en la hoja | Qué significa |
+|---|---|
+| `falta` | se pidió más información; si se repite, algo no se entiende |
+| `sin-cartelera` | se buscó y no había nada |
+| `error` | falló Cineplanet o el servidor |
+
+El procedimiento, cada vez que se revisa:
+
+1. Filtrar la pestaña **Consultas** por `falta` y ordenar por fecha.
+2. Leer la columna `texto`: son las frases que la web no supo aprovechar.
+3. Cada frase distinta entra en `test/conversacion.test.js`, en el nivel que le
+   toque —`basico`, `claro`, `real` o `dificil`.
+4. Recién entonces se arregla. La prueba primero: así se ve fallar y se sabe que
+   el arreglo sirvió.
+
+Lo que **no** hay que hacer es arreglar la frase suelta. Cada una es un ejemplo
+de una familia: «insidous» no era un tipeo que corregir, era que los títulos
+originales no se entendían. La pregunta correcta siempre es *"¿de qué es caso
+esto?"*.
+
+El corpus mide por nivel a propósito. Si cae `basico`, la web está rota para
+todos; si cae `dificil`, es una frase rebuscada y puede esperar.
