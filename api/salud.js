@@ -26,11 +26,12 @@ export default async function handler(req, res) {
       return res.status(200).json(estado);
     }
     const { anotar, formaDeLaClave } = await import('../src/bitacora.js');
-    const r = await anotar({
-      sesion: 'diagnostico',
-      texto: 'escritura de prueba',
-      respuesta: { estado: 'prueba' },
-    });
+    // A la pestaña de pruebas: mezclarlas con las consultas reales arruina lo
+    // único que hace útil a la bitácora, que es leer lo que la gente pregunta.
+    const r = await anotar(
+      { sesion: 'diagnostico', texto: 'escritura de prueba', respuesta: { estado: 'prueba' } },
+      'Pruebas',
+    );
     estado.prueba = r?.ok
       ? { via: r.via, escrita: true }
       : {

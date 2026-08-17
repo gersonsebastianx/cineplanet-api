@@ -121,6 +121,46 @@ function armarFila(datos) {
   ];
 }
 
+const ENCABEZADOS = [
+  'fecha', 'sesion', 'texto', 'estado', 'pelicula', 'cine', 'funcion', 'ajuste', 'respuesta',
+];
+
+/** Añade una fila al final del rango, en la pestaña dicha o en la primera. */
+async function agregar(fila, hoja) {
+  const rango = hoja ? `${encodeURIComponent(`'${hoja}'!A:I`)}` : 'A:I';
+  return fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEET_ID}` +
+      `/values/${rango}:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`,
+    {
+      method: 'POST',
+      headers: {
+        authorization: `Bearer ${await accessToken()}`,
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({ values: [fila] }),
+    },
+  );
+}
+
+/** Crea la pestaña con los mismos encabezados que la principal. */
+async function crearHoja(hoja) {
+  const cabecera = {
+    authorization: `Bearer ${await accessToken()}`,
+    'content-type': 'application/json',
+  };
+  const res = await fetch(
+    `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEET_ID}:batchUpdate`,
+    {
+      method: 'POST',
+      headers: cabecera,
+      body: JSON.stringify({ requests: [{ addSheet: { properties: { title: hoja } } }] }),
+    },
+  );
+  if (!res.ok) return false;
+  await agregar(ENCABEZADOS, hoja);
+  return true;
+}
+
 /**
  * Agrega una fila. Nunca lanza: una bitácora rota no debe tumbar una consulta.
  *
@@ -129,8 +169,11 @@ function armarFila(datos) {
  * está presente", que es lo que dejó la hoja vacía durante días.
  *
  * @param {object} datos { sesion, texto, respuesta }
+ * @param {string|null} hoja pestaña destino; sin nombre va a la primera, que es
+ *   la de las consultas de verdad. Las escrituras de diagnóstico van aparte para
+ *   no ensuciar lo que sirve para entender a las personas.
  */
-export async function anotar(datos) {
+export async function anotar(datos, hoja = null) {
   if (!activo()) return { ok: false, via: 'apagada', detalle: 'sin configuración' };
   try {
     const fila = armarFila(datos);
@@ -159,17 +202,14 @@ export async function anotar(datos) {
       return { ok: true, via: 'apps-script' };
     }
 
-    const url =
-      `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEET_ID}` +
-      `/values/A:I:append?valueInputOption=RAW&insertDataOption=INSERT_ROWS`;
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        authorization: `Bearer ${await accessToken()}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ values: [fila] }),
-    });
+    let res = await agregar(fila, hoja);
+    // La pestaña puede no existir todavía: se crea con sus encabezados y se
+    // reintenta una vez. Así no hay un paso manual que alguien tenga que
+    // recordar antes de que la bitácora funcione.
+    if (!res.ok && hoja && res.status === 400) {
+      await crearHoja(hoja);
+      res = await agregar(fila, hoja);
+    }
     // Mismo criterio que en el otro camino: un fallo tiene que dejar rastro.
     if (!res.ok) {
       const detalle = (await res.text()).slice(0, 200);
