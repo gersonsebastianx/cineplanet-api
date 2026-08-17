@@ -266,3 +266,31 @@ test('«real plaza» a secas sigue sin elegir una sede al azar', () => {
   // El arreglo de arriba no puede reabrir esto: sólo vale el nombre completo.
   assert.equal(leer('la odisea en real plaza').cinema, null);
 });
+
+// ── Títulos originales: acá se dice "insidious", no "La Noche del Demonio" ───
+
+test('«insidious» encuentra La Noche del Demonio', () => {
+  // Reportado: estaba en cartelera y se contestó que no. La API de Cineplanet
+  // no trae el título original en ningún campo, así que el puente es una tabla.
+  const r = leer('Quiero ver insidious');
+  assert.match(r.movie?.title ?? '', /Noche Del Demonio/i);
+  assert.equal(r.movieConfianza, 'alta', 'nombrar el título original no es tantear');
+  assert.deepEqual(r.sobrantes, [], 'lo escrito en inglés queda explicado');
+});
+
+test('el título original convive con el resto de la frase', () => {
+  const r = leer('insidious en cp norte mañana');
+  assert.match(r.movie?.title ?? '', /Noche Del Demonio/i);
+  assert.equal(r.cinema?.name, 'CP Norte');
+});
+
+test('«the odyssey» ahora sí llega a La Odisea', () => {
+  assert.equal(leer('the odyssey').movie?.title, 'La Odisea');
+});
+
+test('una equivalencia sólo vale si esa película está en cartelera', () => {
+  // "the conjuring" no debe inventar nada cuando El Conjuro no se proyecta.
+  const r = leer('quiero ver the conjuring');
+  const enCartelera = ms.some((m) => /conjuro/i.test(m.title));
+  if (!enCartelera) assert.equal(r.movie, null);
+});

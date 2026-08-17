@@ -428,6 +428,81 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
  * @param {string} text frase del usuario
  * @param {{movies: Array, cinemas: Array, today?: string}} catalog
  */
+// Cómo se conoce una película acá frente a cómo la titula Cineplanet. La API no
+// trae el título original en ningún campo —se verificó: "insidious" no aparece
+// en ninguna clave—, así que el puente hay que escribirlo. Reportado: "quiero
+// ver insidious" contestaba que no está en cartelera, y sí estaba.
+//
+// Sólo entran nombres que en el Perú se dicen en inglés y cuyo estreno se
+// tituló distinto. Los que se llaman igual —Toy Story, Shrek, Wicked, Barbie—
+// no necesitan nada. Se evitan a propósito los muy cortos y ambiguos ("it",
+// "up", "cars"): harían más daño que bien.
+const ALIAS = [
+  ['insidious', 'noche demonio'],
+  ['the conjuring', 'conjuro'], ['conjuring', 'conjuro'],
+  ['the nun', 'monja'],
+  ['saw', 'juego del miedo'],
+  ['final destination', 'destino final'],
+  ['the exorcist', 'exorcista'],
+  ['home alone', 'pobre angelito'],
+  ['despicable me', 'villano favorito'],
+  ['inside out', 'intensamente'],
+  ['the lion king', 'rey leon'],
+  ['beauty and the beast', 'bella bestia'],
+  ['snow white', 'blancanieves'],
+  ['sleeping beauty', 'bella durmiente'],
+  ['the little mermaid', 'sirenita'],
+  ['finding nemo', 'buscando nemo'],
+  ['finding dory', 'buscando dory'],
+  ['my neighbor totoro', 'vecino totoro'],
+  ['spirited away', 'viaje chihiro'],
+  ['howls moving castle', 'castillo ambulante'],
+  ['princess mononoke', 'princesa mononoke'],
+  ['grave of the fireflies', 'tumba luciernagas'],
+  ['castle in the sky', 'castillo cielo'],
+  ['the boy and the heron', 'nino garza'],
+  ['the odyssey', 'odisea'],
+  ['wuthering heights', 'cumbres borrascosas'],
+  ['fast and furious', 'rapidos furiosos'], ['fast furious', 'rapidos furiosos'],
+  ['the hunger games', 'juegos del hambre'],
+  ['the avengers', 'vengadores'], ['avengers', 'vengadores'],
+  ['guardians of the galaxy', 'guardianes galaxia'],
+  ['black panther', 'pantera negra'],
+  ['captain america', 'capitan america'],
+  ['wonder woman', 'mujer maravilla'],
+  ['fantastic four', 'fantasticos'],
+  ['the bad guys', 'tipos malos'],
+  ['demon slayer', 'guardianes noche'],
+  ['how to train your dragon', 'entrenar dragon'],
+  ['the smurfs', 'pitufos'],
+  ['puss in boots', 'gato botas'],
+  ['the incredibles', 'increibles'],
+  ['wreck it ralph', 'ralph demoledor'],
+  ['big hero 6', 'grandes heroes'],
+  ['the substance', 'sustancia'],
+  ['gladiator', 'gladiador'],
+  ['back to the future', 'volver futuro'],
+  ['the shining', 'resplandor'],
+].map(([en, es]) => [norm(en), norm(es).split(' ')]);
+
+/**
+ * Película nombrada por su título original. Sólo cuenta si **una sola** de la
+ * cartelera contiene todas las palabras del título peruano: si hay dos, no hay
+ * certeza y sigue el camino normal, que sabe preguntar.
+ */
+function porAlias(text, movies) {
+  const t = norm(text);
+  for (const [en, palabras] of ALIAS) {
+    if (!new RegExp(`\\b${en}\\b`).test(t)) continue;
+    const cand = movies.filter((m) => {
+      const have = new Set(norm(m.title).split(' '));
+      return palabras.every((w) => have.has(w));
+    });
+    if (cand.length === 1) return { item: cand[0], dicho: en };
+  }
+  return null;
+}
+
 export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Se busca por nombre y por distrito real: "en jesús maría" debe encontrar
   // CP Salaverry, que es donde está, aunque el nombre no lo diga.
@@ -464,7 +539,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     .join(' ');
   // Una sola palabra genérica no debería elegir película: se exige que cubra
   // una parte real del título.
-  const movieHit = bestByTokens(rest, movies, (m) => m.title, { minScore: 0.5 });
+  // El título original manda sobre el parecido: quien escribe "insidious" no
+  // está tanteando, sabe exactamente cuál quiere.
+  const alias = porAlias(text, movies);
+  const movieHit = alias
+    ? { item: alias.item, confianza: 'alta', hits: tokens(alias.item.title) }
+    : bestByTokens(rest, movies, (m) => m.title, { minScore: 0.5 });
   const people = /\b(\d+)\s*(personas?|entradas?|boletos?|butacas?|asientos?)\b/.exec(norm(text));
   const worded = Object.entries(WORD_NUMBERS).find(([w]) =>
     new RegExp(`\\b${w}\\s+(personas?|entradas?|boletos?|butacas?|asientos?)\\b`).test(norm(text)),
@@ -520,6 +600,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Palabras que no se pudieron atribuir a nada: probablemente sean un título
   // que no está en cartelera. Sirven para no rellenar con la película anterior.
   const atribuidas = new Set([
+    // Lo que se escribió en inglés ya está explicado por la película.
+    ...(alias ? alias.dicho.split(' ') : []),
     ...(movieHit?.item ? tokens(movieHit.item.title) : []),
     ...(cinemaHit?.hits ?? []),
     ...(district ? tokens(district) : []),
