@@ -294,3 +294,12 @@ test('una equivalencia sólo vale si esa película está en cartelera', () => {
   const enCartelera = ms.some((m) => /conjuro/i.test(m.title));
   if (!enCartelera) assert.equal(r.movie, null);
 });
+
+test('un título original mal escrito igual llega', () => {
+  // Lo trajo la bitácora en su primer minuto de vida: alguien escribió
+  // "insidous", sin la segunda i, y la tabla exigía la palabra exacta.
+  for (const f of ['quiero ver insidous', 'insidius en cp norte', 'the odisey']) {
+    assert.notEqual(leer(f).movie, null, f);
+  }
+  assert.deepEqual(leer('quiero ver insidous').sobrantes, []);
+});

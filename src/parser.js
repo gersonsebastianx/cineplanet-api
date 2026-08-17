@@ -492,13 +492,29 @@ const ALIAS = [
  */
 function porAlias(text, movies) {
   const t = norm(text);
+  const dichas = t.split(' ').filter(Boolean);
   for (const [en, palabras] of ALIAS) {
-    if (!new RegExp(`\\b${en}\\b`).test(t)) continue;
+    // Con tolerancia a tipeos: la bitácora registró "insidous" —sin la segunda
+    // i— fallando. Quien escribe un título en inglés lo escribe de oído.
+    const partes = en.split(' ');
+    const nombrado = new RegExp(`\\b${en}\\b`).test(t)
+      ? true
+      : partes.length === 1 && partes[0].length >= 6
+        ? dichas.some((w) => closeEnough(w, partes[0]))
+        : partes.every((pz) => dichas.some((w) => w === pz || (pz.length >= 6 && closeEnough(w, pz))));
+    if (!nombrado) continue;
     const cand = movies.filter((m) => {
       const have = new Set(norm(m.title).split(' '));
       return palabras.every((w) => have.has(w));
     });
-    if (cand.length === 1) return { item: cand[0], dicho: en };
+    if (cand.length === 1) {
+      // Se devuelve lo que la persona escribió, no lo que quiso escribir: es lo
+      // que hay que descontar de las palabras sin explicar.
+      const escritas = dichas.filter(
+        (w) => partes.includes(w) || partes.some((pz) => pz.length >= 6 && closeEnough(w, pz)),
+      );
+      return { item: cand[0], dicho: escritas.join(' ') || en };
+    }
   }
   return null;
 }
