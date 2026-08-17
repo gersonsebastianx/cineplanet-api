@@ -386,7 +386,13 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
     if (!hay) continue;
 
     const hits = pegado ? have : [...exactos, ...aprox];
-    if (weak && hits.every((w) => weak.has(w))) continue;
+    // "real plaza" a secas no puede elegir sede: lo comparten muchas. Pero hay
+    // sedes que se llaman **exactamente** así —CP Norte, CP Mall del Sur— y el
+    // guardia las borraba enteras: la web ofrecía "CP Norte" y al pulsarlo
+    // respondía que «norte» no está en cartelera. Decir el nombre completo no
+    // es una pista floja, es el nombre.
+    const completo = exactos.length === have.length;
+    if (weak && !completo && hits.every((w) => weak.has(w))) continue;
 
     const peso = pegado ? have.length : exactos.length + aprox.length * 0.8;
     const score = peso / have.length + hits.length * 0.1;

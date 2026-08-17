@@ -506,6 +506,14 @@ function tarjeta(r) {
   return card;
 }
 
+// Pulsar una opción no debería pasar por el intérprete: la sede ya viene con
+// su id. Reinterpretar el texto es cómo se llegó a ofrecer "CP Norte" y luego
+// contestar que no existe.
+function elegir(o) {
+  if (o.id) contexto = { ...(contexto ?? {}), cinemaId: o.id };
+  consultar(o.nombre);
+}
+
 function responder(r) {
   if (r.contexto) contexto = r.contexto;
   if (r.estado === 'falta') return decir(r.pregunta);
@@ -515,7 +523,7 @@ function responder(r) {
     for (const o of r.opciones) {
       const b = el('button', null, o.nombre);
       b.type = 'button';
-      b.addEventListener('click', () => consultar(o.nombre));
+      b.addEventListener('click', () => elegir(o));
       fila.append(b);
     }
     chat.append(fila);
@@ -527,7 +535,7 @@ function responder(r) {
     for (const o of r.opciones) {
       const b = el('button', null, o.km != null ? `${o.nombre} · ${o.km} km` : `${o.nombre}${o.ciudad ? ` · ${o.ciudad}` : ''}`);
       b.type = 'button';
-      b.addEventListener('click', () => consultar(o.nombre));
+      b.addEventListener('click', () => elegir(o));
       fila.append(b);
     }
     chat.append(fila);

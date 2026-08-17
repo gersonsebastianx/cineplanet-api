@@ -249,3 +249,20 @@ test('«con mis amigos» no inventa cuántos son', () => {
 test('el título sigue ganando cuando de verdad empieza con «mi»', () => {
   assert.equal(leer('mi vecino totoro en salaverry').movie?.title, 'Mi Vecino Totoro');
 });
+
+// ── Toda sede ofrecida tiene que poder elegirse ──────────────────────────────
+
+test('las 43 sedes se reconocen por su propio nombre', () => {
+  // Reportado: la web ofreció "CP Norte" y al pulsarlo contestó que «norte» no
+  // está en cartelera. Tres sedes —CP Norte, CP Mall del Sur y CP Centro Jr. De
+  // La Unión— tienen nombres hechos sólo de palabras genéricas, y el guardia que
+  // impide que "real plaza" elija sede al azar las borraba enteras. Una de ellas
+  // resolvía además a la equivocada (CP Canto Grande).
+  const fallan = cs.filter((c) => leer(c.name).cinema?.id !== c.id).map((c) => c.name);
+  assert.deepEqual(fallan, [], 'ninguna sede puede ser inalcanzable por su nombre');
+});
+
+test('«real plaza» a secas sigue sin elegir una sede al azar', () => {
+  // El arreglo de arriba no puede reabrir esto: sólo vale el nombre completo.
+  assert.equal(leer('la odisea en real plaza').cinema, null);
+});
