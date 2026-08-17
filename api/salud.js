@@ -13,15 +13,27 @@ export default async function handler(req, res) {
   const estado = { ok: true, bitacora, tokenPresente: !!process.env.BITACORA_TOKEN };
 
   const pedido = req.query?.diagnostico;
-  // Con cuenta de servicio la prueba se hace por el mismo camino que la bitácora.
+  // Con cuenta de servicio la prueba se hace por el mismo camino que la bitácora
+  // y se informa **lo que Google contestó**, no que se intentó: decir "enviada"
+  // cuando la escritura se rechazó es exactamente el error que dejó la hoja
+  // vacía durante días. Pide una clave porque escribe una fila de verdad; sin
+  // token configurado sirve el final del id de la hoja, que quien la administra
+  // tiene a la vista en la URL.
   if (pedido && conCuenta) {
+    const llave = process.env.BITACORA_TOKEN || process.env.SHEET_ID.slice(-8);
+    if (pedido !== llave) {
+      estado.prueba = { error: 'clave incorrecta' };
+      return res.status(200).json(estado);
+    }
     const { anotar } = await import('../src/bitacora.js');
-    await anotar({
+    const r = await anotar({
       sesion: 'diagnostico',
       texto: 'escritura de prueba',
       respuesta: { estado: 'prueba' },
     });
-    estado.prueba = { via: 'cuenta-de-servicio', enviada: true };
+    estado.prueba = r?.ok
+      ? { via: r.via, escrita: true }
+      : { via: r?.via ?? 'cuenta-de-servicio', escrita: false, error: r?.detalle ?? 'sin respuesta' };
     return res.status(200).json(estado);
   }
   if (pedido && process.env.BITACORA_TOKEN && pedido === process.env.BITACORA_TOKEN) {

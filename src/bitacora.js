@@ -84,10 +84,15 @@ function armarFila(datos) {
 
 /**
  * Agrega una fila. Nunca lanza: una bitácora rota no debe tumbar una consulta.
+ *
+ * Devuelve qué pasó de verdad —`{ ok, via, detalle }`— para que el chequeo de
+ * salud pueda afirmar "escribí una fila y entró" en vez de "la configuración
+ * está presente", que es lo que dejó la hoja vacía durante días.
+ *
  * @param {object} datos { sesion, texto, respuesta }
  */
 export async function anotar(datos) {
-  if (!activo()) return;
+  if (!activo()) return { ok: false, via: 'apagada', detalle: 'sin configuración' };
   try {
     const fila = armarFila(datos);
 
@@ -110,8 +115,9 @@ export async function anotar(datos) {
         console.error(
           JSON.stringify({ t: 'bitacora-rechazo', status: res.status, respuesta: cuerpo }),
         );
+        return { ok: false, via: 'apps-script', detalle: `${res.status} ${cuerpo}` };
       }
-      return;
+      return { ok: true, via: 'apps-script' };
     }
 
     const url =
@@ -127,16 +133,14 @@ export async function anotar(datos) {
     });
     // Mismo criterio que en el otro camino: un fallo tiene que dejar rastro.
     if (!res.ok) {
-      console.error(
-        JSON.stringify({
-          t: 'bitacora-rechazo',
-          status: res.status,
-          respuesta: (await res.text()).slice(0, 200),
-        }),
-      );
+      const detalle = (await res.text()).slice(0, 200);
+      console.error(JSON.stringify({ t: 'bitacora-rechazo', status: res.status, respuesta: detalle }));
+      return { ok: false, via: 'cuenta-de-servicio', detalle: `${res.status} ${detalle}` };
     }
+    return { ok: true, via: 'cuenta-de-servicio' };
   } catch (err) {
     // Se deja rastro en los logs y se sigue: la consulta ya se respondió.
     console.error(JSON.stringify({ t: 'bitacora-error', error: err.message }));
+    return { ok: false, via: 'cuenta-de-servicio', detalle: err.message };
   }
 }
