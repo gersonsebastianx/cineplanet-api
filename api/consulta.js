@@ -20,7 +20,11 @@ export default async function handler(req, res) {
     });
     contar(respuesta);
     registrar(texto, respuesta);
-    await anotar({ sesion, texto, respuesta });
+    // La web siempre manda una sesión; lo que llega sin ella no es una persona
+    // usando la página sino una comprobación —un curl de verificación, un
+    // monitor— y va a la pestaña de pruebas. Veinte sondas de despliegue se
+    // colaron entre las consultas reales antes de que esto existiera.
+    await anotar({ sesion, texto, respuesta }, sesion ? null : 'Pruebas');
     return res.status(200).json(respuesta);
   } catch (err) {
     const caido = /cookie de sesión|rechazó/.test(err.message);
