@@ -33,6 +33,10 @@ const STOP = new Set(
     // Conectores de hora. Sin esto "de 6pm en adelante" contestaba que
     // «adelante» no está en cartelera: la palabra sobraba y se leía como título.
     'adelante partir desde despues antes hasta entre tipo aproximadamente alrededor ' +
+    // Vocabulario de todos los días que jamás es un título.
+    'peli pelis nose ni idea aburrido aburrida plan planes ganas rato ratito ' +
+    'media cuarto mediodia medianoche este esta estos estas proximo proxima ' +
+    'pasado pasada semana finde fin trabajo chamba oficina clases ' +
     'temprano luego rato horario horarios funcion funciones franja ' +
     'primera segunda tercera ultima ultimo esa ese eso aquella aquel ' +
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
@@ -168,7 +172,7 @@ export const CIUDADES_SIN_SEDE = {
 // Cómo pide la gente un género frente a cómo lo escribe Cineplanet. "Para
 // niños" no es un género suyo: es clasificación APT más animación o familiar.
 const GENEROS = [
-  { pide: /\b(nin[oa]s?|infantil|familiar|en familia|mis hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
+  { pide: /\b(nin[oa]s?|infantil|familiar|en\s+familia|toda\s+la\s+familia|mis\s+hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
   { pide: /\b(terror|miedo|susto|horror)\b/, generos: ['Terror'], dice: 'de terror', nada: 'nada de terror' },
   { pide: /\b(accion|aventura)\b/, generos: ['Acción'], dice: 'de acción', nada: 'nada de acción' },
   { pide: /\b(comedia|graciosa|risa|chistosa)\b/, generos: ['Comedia'], dice: 'de comedia', nada: 'ninguna comedia' },
@@ -602,6 +606,27 @@ function ciudadNombrada(text, cinemas) {
   return mejor;
 }
 
+// Preguntas legítimas que esta web no responde. Decir "no entendí" ante
+// "¿cuánto cuesta?" es cierto y no sirve: la persona preguntó bien, somos
+// nosotros los que no lo hacemos. Decirlo de frente es mejor que hacerse el
+// tonto, y evita que insista tres veces.
+const FUERA = [
+  { pide: /\b(precio|precios|cuesta|cuestan|cuanto\s+(sale|es|cuesta)|tarifa|entrada\s+cuanto)\b/, tema: 'los precios' },
+  { pide: /\b(descuento|descuentos|promocion|promociones|2x1|dos\s+por\s+uno|socio|socios|cineplanet\s+card)\b/, tema: 'los descuentos y beneficios de socio' },
+  { pide: /\b(combo|combos|canchita|popcorn|dulceria|comida|snack)\b/, tema: 'la dulcería' },
+  { pide: /\b(estacionamiento|parqueo|cochera)\b/, tema: 'el estacionamiento' },
+  { pide: /\b(reserva|reservar|reservame|apartar|apartame|separar)\b/, tema: 'reservar sin pagar' },
+  { pide: /\b(a\s+que\s+hora\s+(abren|cierran)|horario\s+de\s+atencion)\b/, tema: 'el horario del local' },
+];
+
+// Saludos y ruido: no son una consulta, y tratarlos como título fue de donde
+// salió «hola» no está en cartelera.
+const SALUDO =
+  /^(hola|holi|buenas|buenos\s+dias|buenas\s+tardes|buenas\s+noches|hey|ola|ola\s+k\s+ase|que\s+tal|saludos|alo)[\s!¡?¿.]*$/;
+// Cortesía y ruido: no es un saludo, y responder "Hola" a un "gracias" suena a
+// máquina que no escuchó.
+const CORTESIA = /^(gracias|graciass?|ok|oka|okey|listo|ya|bueno|perfecto|genial|(?:ja|je|ji|ha){2,}|a{3,}|\?+|\.+|x+)[\s!¡?¿.]*$/;
+
 export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Se busca por nombre y por distrito real: "en jesús maría" debe encontrar
   // CP Salaverry, que es donde está, aunque el nombre no lo diga.
@@ -744,6 +769,17 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
     cinemaOptions: cinemaHit?.tied?.length > 1 ? cinemaHit.tied : null,
     district: district ?? ciudadSinSede ?? ciudadConSede?.nombre ?? null,
+    fuera: FUERA.find((f) => f.pide.test(norm(text)))?.tema ?? null,
+    // Nombró un centro comercial que no está en los datos de Cineplanet. No se
+    // puede afirmar si hay sede ahí o no, así que se pregunta por el distrito
+    // en vez de inventar una respuesta en cualquiera de los dos sentidos.
+    centroComercial:
+      cinemaHit?.item || district
+        ? null
+        : (/\b(mega\s?plaza|jockey\s?plaza|open\s?plaza|mall\s?plaza|plaza\s?norte|centro\s+comercial|mall)\b/.exec(
+            norm(text),
+          )?.[0] ?? null),
+    saludo: SALUDO.test(norm(text)) ? 'saludo' : CORTESIA.test(norm(text)) ? 'cortesia' : null,
     // Nombró una ciudad que sí tiene sedes. Sin esta distinción la respuesta
     // afirmaba "No hay Cineplanet en Lima", que es falso 27 veces.
     lugarConSede: !district && !ciudadSinSede && ciudadConSede ? ciudadConSede.sedes.length : 0,

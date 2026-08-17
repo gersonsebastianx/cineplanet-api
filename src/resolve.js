@@ -137,6 +137,37 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Preguntas que no hacemos y saludos: se responden antes que nada, porque si
+  // caen en la maquinaria de títulos terminan en «hola» no está en cartelera.
+  if (fresco.fuera) {
+    return {
+      estado: 'falta',
+      // Sin "de + el": queda "de el estacionamiento".
+      pregunta: `No sé nada sobre ${fresco.fuera}: acá sólo busco funciones y butacas, y el pago lo haces en Cineplanet. ¿Qué quieres ver?`,
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+  if (fresco.centroComercial && !intent.cinema) {
+    return {
+      estado: 'falta',
+      pregunta: `Cineplanet no publica en qué centros comerciales está, así que no puedo confirmarte «${fresco.centroComercial}». ¿En qué distrito queda? Con eso te digo la sede más cercana.`,
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+  if (fresco.saludo) {
+    const abre = fresco.saludo === 'saludo' ? 'Hola. ' : '';
+    return {
+      estado: 'falta',
+      pregunta: intent.cinema
+        ? `${abre}Dime qué quieres ver y te busco función en ${intent.cinema.name}.`
+        : `${abre}Dime la película, el cine y cuándo — por ejemplo «La Odisea hoy en la tarde en Salaverry».`,
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+
   // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.
   // Sólo si lo nombró en este mensaje: unas coordenadas heredadas del turno
   // anterior no son un distrito recién mencionado.
@@ -221,17 +252,42 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
-  // Nombró algo que no está en cartelera. Heredar la película del turno anterior
-  // produce una respuesta segura y equivocada: preguntó por una y se le contesta
-  // por otra. Mejor decir que no se encontró.
-  if (!fresco.movie && fresco.sobrantes.length) {
+  // Quedaron palabras sin explicar. Durante mucho tiempo esto se respondía
+  // afirmando que eran una película inexistente —«hola» no está en cartelera—,
+  // y esa sola regla producía un tercio de las respuestas rotas.
+  //
+  // Que algo no se entienda no autoriza a decir qué era. Sólo se afirma "no
+  // está en cartelera" cuando hay razón para creer que estaban nombrando una:
+  // que se parezca a algún título. Si no, se dice lo único cierto —no se
+  // entendió— y se ofrece por dónde seguir.
+  //
+  // Y si del mensaje sí se entendió algo —el día, la hora, el género, la sede,
+  // cuántos van— una palabra suelta no puede tumbar la respuesta entera: "a las
+  // 19:30" entendía la hora y contestaba «19:30» no está en cartelera. Se sigue
+  // adelante y lo no usado se nombra al final, donde no estorba. Esta regla
+  // reemplaza a la lista de palabras que nunca terminaba de crecer.
+  const parecidaATitulo = fresco.movieSugerencias?.length > 0;
+  const entendioAlgo =
+    fresco.date != null ||
+    fresco.from != null ||
+    fresco.genero != null ||
+    fresco.formato != null ||
+    fresco.idioma != null ||
+    fresco.seats != null ||
+    fresco.cinema != null ||
+    fresco.district != null;
+
+  if (!fresco.movie && fresco.sobrantes.length && (parecidaATitulo || !entendioAlgo)) {
     const dicho = fresco.sobrantes.join(' ');
+    const noEntendi = parecidaATitulo
+      ? `Lo siento, «${dicho}» no está en cartelera`
+      : `No entendí «${dicho}»`;
     // Sin saber dónde va a ir, listar cartelera es listar la de otra punta del
     // país: qué se da depende del distrito.
     if (!intent.cinema) {
       return {
         estado: 'falta',
-        pregunta: `Lo siento, «${dicho}» no está en cartelera. ¿En qué distrito vas al cine? Te digo qué hay ahí.`,
+        pregunta: `${noEntendi}. ¿En qué distrito vas al cine? Te digo qué hay ahí.`,
         intent,
         contexto: recordar({ ...intent, movie: null }),
       };
@@ -241,7 +297,9 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     if (enCartelera.length) {
       return {
         estado: 'cartelera',
-        pregunta: `Lo siento, «${dicho}» no está en cartelera${donde}. Estas sí:`,
+        pregunta: parecidaATitulo
+          ? `Lo siento, «${dicho}» no está en cartelera${donde}. Estas sí:`
+          : `No entendí «${dicho}». Esto hay${donde}:`,
         opciones: enCartelera.map((m) => ({ nombre: m.titulo })),
         intent,
         contexto: recordar({ ...intent, movie: null }),
