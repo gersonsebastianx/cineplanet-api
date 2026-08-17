@@ -385,7 +385,6 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
 
     const peso = pegado ? have.length : exactos.length + aprox.length * 0.8;
     const score = peso / have.length + hits.length * 0.1;
-    if (score < minScore) continue;
     // Cuando la única evidencia es aproximada no hay certeza, hay sospecha.
     const confianza = exactos.length || pegado ? 'alta' : 'media';
     scored.push({ item, score, hits, confianza });
@@ -394,11 +393,22 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
   scored.sort((a, b) => b.score - a.score);
   if (!scored.length) return null;
 
+  // Hay parecido pero no alcanza para elegir. Descartarlo era tirar la única
+  // pista útil: "toi stori" se parece a Toy Story y merece una pregunta, no un
+  // "no está en cartelera".
+  if (scored[0].score < minScore) {
+    // Una pista construida sólo con palabras comunes no es una pista: "pero"
+    // coincide exacto con "Separada pero nunca sola" y no significa nada.
+    const utiles = scored.filter((s) => s.hits.some((w) => !COMUNES.has(w)));
+    return { item: null, confianza: 'baja', sugerencias: utiles.slice(0, 3).map((s) => s.item) };
+  }
+
   const top = scored[0];
   top.tied = scored.filter((s) => s.score >= top.score - 0.01).map((s) => s.item);
   // Dos candidatos casi iguales tampoco son una certeza.
   if (top.tied.length > 1 && top.confianza === 'alta') top.confianza = 'media';
   top.alternativas = scored.slice(0, 3).map((s) => s.item);
+  top.sugerencias = [];
   return top;
 }
 
@@ -410,9 +420,12 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
 export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Se busca por nombre y por distrito real: "en jesús maría" debe encontrar
   // CP Salaverry, que es donde está, aunque el nombre no lo diga.
-  const cinemaHit =
-    bestByTokens(text, cinemas, (c) => c.name, { weak: WEAK_VENUE, minScore: 0.45 }) ??
-    bestByTokens(text, cinemas, (c) => c.district ?? '', { weak: WEAK_VENUE, minScore: 0.45 });
+  const porNombre = bestByTokens(text, cinemas, (c) => c.name, { weak: WEAK_VENUE, minScore: 0.45 });
+  const porDistrito = bestByTokens(text, cinemas, (c) => c.district ?? '', {
+    weak: WEAK_VENUE,
+    minScore: 0.45,
+  });
+  const cinemaHit = porNombre?.item ? porNombre : porDistrito?.item ? porDistrito : null;
   // Un distrito sin sede propia igual dice dónde está la persona.
   const t = norm(text);
   const genero = GENEROS.find((g) => g.pide.test(norm(text))) ?? null;
@@ -431,7 +444,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
 
   // Lo ya consumido por el cine, la fecha o la hora no debería competir por ser
   // película: si no, el "5" de "a las 5" gana contra "Toy Story 5".
-  const used = new Set(cinemaHit ? cinemaHit.hits : []);
+  const used = new Set(cinemaHit?.hits ?? []);
   const rest = tokens(text)
     .filter((w) => !used.has(w) && !/^\d+$/.test(w) && !DAYS.includes(w) && !MONTHS.includes(w))
     .join(' ');
@@ -448,7 +461,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   let lugarDesconocido = null;
   if (!cinemaHit && !district && !ciudadSinSede) {
     const usadas = new Set([
-      ...(movieHit ? tokens(movieHit.item.title) : []),
+      ...(movieHit?.item ? tokens(movieHit.item.title) : []),
       ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
     ]);
     const m = /\ben\s+(?:el\s+|la\s+|los\s+|las\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i.exec(text);
@@ -461,8 +474,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Palabras que no se pudieron atribuir a nada: probablemente sean un título
   // que no está en cartelera. Sirven para no rellenar con la película anterior.
   const atribuidas = new Set([
-    ...(movieHit ? tokens(movieHit.item.title) : []),
-    ...(cinemaHit ? cinemaHit.hits : []),
+    ...(movieHit?.item ? tokens(movieHit.item.title) : []),
+    ...(cinemaHit?.hits ?? []),
     ...(district ? tokens(district) : []),
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
     ...tokens(dichoGenero),
@@ -477,11 +490,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
 
   return {
     movie: movieHit?.item ?? null,
-    movieConfianza: movieHit?.confianza ?? null,
+    movieConfianza: movieHit?.item ? movieHit.confianza : null,
     movieAlternativas: movieHit?.alternativas ?? [],
+    movieSugerencias: movieHit?.sugerencias ?? [],
     cinema: cinemaHit?.item ?? null,
     // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
-    cinemaOptions: cinemaHit && cinemaHit.tied.length > 1 ? cinemaHit.tied : null,
+    cinemaOptions: cinemaHit?.tied?.length > 1 ? cinemaHit.tied : null,
     district: district ?? ciudadSinSede ?? null,
     districtCoords: district
       ? { lat: DISTRICTS[district][0], lon: DISTRICTS[district][1] }

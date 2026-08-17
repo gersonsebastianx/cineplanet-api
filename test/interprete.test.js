@@ -163,3 +163,19 @@ test('una función agotada se distingue de un fallo de red', async () => {
   assert.equal(agotada.agotada, true);
   assert.ok(agotada instanceof Error);
 });
+
+// ── Parecidos débiles: se ofrecen como pregunta, no se descartan ─────────────
+
+test('«toi stori» sugiere Toy Story en vez de decir que no existe', () => {
+  const r = leer('toi stori mañana hay?');
+  assert.equal(r.movie, null, 'no alcanza para elegirla solo');
+  assert.deepEqual(
+    r.movieSugerencias.map((m) => m.title),
+    ['Toy Story 5'],
+  );
+});
+
+test('una pista hecha sólo de palabras comunes no se sugiere', () => {
+  // "pero" coincide exacto con "Separada pero nunca sola" y no significa nada.
+  assert.deepEqual(leer('Pero en cineplanet magdalena vi que sí').movieSugerencias, []);
+});

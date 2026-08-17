@@ -167,6 +167,22 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Hay un parecido que no alcanzó para elegir. Antes se descartaba y se
+  // respondía "no está en cartelera", tirando la única pista útil.
+  if (!fresco.movie && fresco.movieSugerencias?.length) {
+    const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
+    const uno = fresco.movieSugerencias.length === 1;
+    return {
+      estado: 'confirmar',
+      pregunta: uno
+        ? `¿Te refieres a ${fresco.movieSugerencias[0].title}?`
+        : `¿Cuál de estas quieres ver${donde}?`,
+      opciones: fresco.movieSugerencias.map((m) => ({ nombre: m.title })),
+      intent,
+      contexto: recordar({ ...intent, movie: null }),
+    };
+  }
+
   // Nombró algo que no está en cartelera. Heredar la película del turno anterior
   // produce una respuesta segura y equivocada: preguntó por una y se le contesta
   // por otra. Mejor decir que no se encontró.
