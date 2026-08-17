@@ -203,3 +203,27 @@ for (const frase of ['Otra película qué recomiendes?', 'qué me recomiendas?',
     assert.equal(r.movie, null);
   });
 }
+
+// ── Cuántos van casi nunca viene como número ────────────────────────────────
+
+test('«iré solo» es una entrada, no dos', () => {
+  // Reportado: decía "ire solo" y seguía sugiriendo dos butacas.
+  for (const f of ['ire solo', 'voy solo', 'iré sola', 'yo solo']) {
+    assert.equal(leer(f).seats, 1, f);
+  }
+});
+
+test('«somos 3» y «vamos 4» fijan el grupo', () => {
+  assert.equal(leer('somos 3').seats, 3);
+  assert.equal(leer('vamos 4').seats, 4);
+});
+
+test('«solo quiero ver…» no significa que vaya solo', () => {
+  assert.equal(leer('solo quiero ver la odisea').seats, null);
+});
+
+test('decir cuántos van no deja palabras sin explicar', () => {
+  for (const f of ['ire solo', 'somos 4', 'iré sola']) {
+    assert.deepEqual(leer(f).sobrantes, [], f);
+  }
+});

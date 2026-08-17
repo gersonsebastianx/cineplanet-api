@@ -491,6 +491,18 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     cinemaHit = otra?.item ? otra : null;
   }
 
+  // Cuántos van casi nunca viene como número. "Iré solo" o "somos 3" decían lo
+  // mismo que "para 1 persona" y se ignoraban, así que seguía sugiriendo dos.
+  const t2 = norm(text);
+  const pareja = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/.test(t2);
+  const solo =
+    /\b(ire|ir|voy|iba|estare|estoy|vengo|vere|veo)\s+sol[oa]s?\b/.test(t2) ||
+    /\b(yo\s+sol[oa]|sol[oa]\s+yo|sol[oa]\s+nomas)\b/.test(t2) ||
+    /\bpara\s+mi\s+(sol[oa]|nomas)\b/.test(t2);
+  const grupo = /\b(somos|vamos|seremos|iremos|seriamos)\s+(\d{1,2}|dos|tres|cuatro|cinco|seis|siete|ocho)\b/.exec(t2);
+  const cuantosGrupo = grupo ? (WORD_NUMBERS[grupo[2]] ?? +grupo[2]) : null;
+
+
   // Palabras que no se pudieron atribuir a nada: probablemente sean un título
   // que no está en cartelera. Sirven para no rellenar con la película anterior.
   const atribuidas = new Set([
@@ -501,12 +513,13 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...tokens(dichoGenero),
     ...tokens(formato ? (formato.pide.exec(norm(text))?.[0] ?? '') : ''),
     ...tokens(idioma ? (idioma.pide.exec(norm(text))?.[0] ?? '') : ''),
+    // "somos 3" y "voy solo" dicen cuántos van: no son un título desconocido.
+    ...tokens(grupo?.[0] ?? ''),
+    ...(solo ? ['solo', 'sola', 'ire', 'voy', 'yo', 'nomas', 'vengo', 'estoy'] : []),
+    ...(pareja ? ['mi', 'con', 'novia', 'novio', 'esposa', 'esposo', 'pareja'] : []),
     ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
   ]);
   const sobrantes = tokens(text).filter((w) => !atribuidas.has(w) && w.length >= 4);
-
-  // "para mí y mi novia" son dos, aunque no diga ningún número.
-  const pareja = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/.test(norm(text));
 
   return {
     movie: movieHit?.item ?? null,
@@ -526,7 +539,9 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     from,
     to,
     // Nadie compra 50 butacas juntas por chat, y 0 rompe la búsqueda de bloques.
-    seats: acotarPersonas(people ? +people[1] : worded ? worded[1] : pareja ? 2 : null),
+    seats: acotarPersonas(
+      people ? +people[1] : worded ? worded[1] : cuantosGrupo ?? (solo ? 1 : pareja ? 2 : null),
+    ),
     lugarDesconocido,
     sobrantes,
     formato: formato ? { valor: formato.valor, dice: formato.dice } : null,
