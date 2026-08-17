@@ -303,3 +303,30 @@ test('un título original mal escrito igual llega', () => {
   }
   assert.deepEqual(leer('quiero ver insidous').sobrantes, []);
 });
+
+// ── Responder la ciudad no puede ser un callejón sin salida ─────────────────
+
+test('«lima» es una ciudad, nunca un título', () => {
+  // La web pregunta "¿en qué distrito o provincia estás?" y la respuesta más
+  // probable —27 de los 43 cines— contestaba «lima» no está en cartelera.
+  const r = leer('lima');
+  assert.equal(r.movie, null);
+  assert.equal(r.district, 'Lima');
+  assert.ok(r.lugarConSede > 1, 'Lima tiene sedes, y decir lo contrario es mentir');
+  assert.deepEqual(r.sobrantes, []);
+});
+
+test('las ciudades salen de los datos, no de una lista escrita', () => {
+  // Si Cineplanet abre en una ciudad nueva tiene que entenderse sin tocar nada.
+  const ciudades = [...new Set(cs.map((c) => c.city).filter(Boolean))];
+  const mudas = ciudades.filter((ciudad) => {
+    const r = leer(`estoy en ${ciudad}`);
+    return !r.cinema && !r.district;
+  });
+  assert.deepEqual(mudas, [], 'toda ciudad con sede debe reconocerse');
+});
+
+test('una ciudad sin sede sigue diciéndolo', () => {
+  const r = leer('iquitos');
+  assert.equal(r.lugarConSede, 0, 'no se puede prometer un cine que no existe');
+});

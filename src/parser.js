@@ -519,6 +519,37 @@ function porAlias(text, movies) {
   return null;
 }
 
+/**
+ * Ciudad nombrada que sí tiene Cineplanet, con el centro de sus sedes como
+ * ubicación. No se escribe a mano: sale del campo `city` de la propia API, así
+ * que si abren una sede en una ciudad nueva se entiende sin tocar nada.
+ *
+ * El centro sirve para lo de siempre —ordenar por cercanía—, y en una ciudad
+ * con muchas sedes deja arriba las céntricas, que es la mejor respuesta posible
+ * cuando alguien sólo dijo "Lima".
+ */
+function ciudadNombrada(text, cinemas) {
+  const t = norm(text);
+  let mejor = null;
+  for (const c of cinemas) {
+    const ciudad = norm(c.city ?? '');
+    if (!ciudad || ciudad.length < 4) continue;
+    if (!new RegExp(`\\b${ciudad}\\b`).test(t)) continue;
+    // Ante "Chiclayo" y "Chiclayo Real Plaza", gana el nombre más largo.
+    if (!mejor || ciudad.length > norm(mejor.nombre).length) mejor = { nombre: c.city, sedes: [] };
+  }
+  if (!mejor) return null;
+  mejor.sedes = cinemas.filter(
+    (c) => norm(c.city ?? '') === norm(mejor.nombre) && Number.isFinite(c.lat),
+  );
+  if (!mejor.sedes.length) return null;
+  mejor.coords = {
+    lat: mejor.sedes.reduce((a, c) => a + c.lat, 0) / mejor.sedes.length,
+    lon: mejor.sedes.reduce((a, c) => a + c.lon, 0) / mejor.sedes.length,
+  };
+  return mejor;
+}
+
 export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Se busca por nombre y por distrito real: "en jesús maría" debe encontrar
   // CP Salaverry, que es donde está, aunque el nombre no lo diga.
@@ -541,6 +572,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   const ciudadSinSede = Object.keys(CIUDADES_SIN_SEDE).find((c) =>
     new RegExp(`\\b${c}\\b`).test(norm(text)),
   );
+  // Ciudades donde sí hay Cineplanet, sacadas de los propios datos. "Lima" no
+  // aparece en el nombre de ninguna sede, así que sin esto la respuesta más
+  // probable a "¿en qué distrito estás?" —27 de los 43 cines— terminaba en
+  // «lima» no está en cartelera. Un callejón sin salida en el paso más
+  // transitado de la conversación.
+  const ciudadConSede = ciudadNombrada(text, cinemas);
   const district = Object.keys(DISTRICTS)
     .filter((d) => new RegExp(`\\b${d}\\b`).test(t))
     .sort((a, b) => b.length - a.length)[0] ?? null;
@@ -618,6 +655,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   const atribuidas = new Set([
     // Lo que se escribió en inglés ya está explicado por la película.
     ...(alias ? alias.dicho.split(' ') : []),
+    ...(ciudadConSede ? norm(ciudadConSede.nombre).split(' ') : []),
     ...(movieHit?.item ? tokens(movieHit.item.title) : []),
     ...(cinemaHit?.hits ?? []),
     ...(district ? tokens(district) : []),
@@ -643,12 +681,15 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     cinema: cinemaHit?.item ?? null,
     // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
     cinemaOptions: cinemaHit?.tied?.length > 1 ? cinemaHit.tied : null,
-    district: district ?? ciudadSinSede ?? null,
+    district: district ?? ciudadSinSede ?? ciudadConSede?.nombre ?? null,
+    // Nombró una ciudad que sí tiene sedes. Sin esta distinción la respuesta
+    // afirmaba "No hay Cineplanet en Lima", que es falso 27 veces.
+    lugarConSede: !district && !ciudadSinSede && ciudadConSede ? ciudadConSede.sedes.length : 0,
     districtCoords: district
       ? { lat: DISTRICTS[district][0], lon: DISTRICTS[district][1] }
       : ciudadSinSede
         ? { lat: CIUDADES_SIN_SEDE[ciudadSinSede][0], lon: CIUDADES_SIN_SEDE[ciudadSinSede][1] }
-        : null,
+        : (ciudadConSede?.coords ?? null),
     date,
     from,
     to,

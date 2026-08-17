@@ -141,11 +141,17 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   // Sólo si lo nombró en este mensaje: unas coordenadas heredadas del turno
   // anterior no son un distrito recién mencionado.
   if (!intent.cinema && intent.district && intent.districtCoords) {
-    const cerca = nearest(cinemaList, intent.districtCoords, 3);
+    const cuantas = intent.lugarConSede ?? 0;
+    const cerca = nearest(cinemaList, intent.districtCoords, cuantas ? 4 : 3);
     return {
       estado: 'elige-cine',
-      pregunta: `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
-      opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km })),
+      // Decir "no hay Cineplanet en Lima" es falso 27 veces. Cuando la ciudad
+      // sí tiene sedes, lo honesto es decir cuántas y ofrecer las del centro,
+      // que es lo mejor que se puede saber de alguien que sólo dijo su ciudad.
+      pregunta: cuantas
+        ? `En ${titulo(intent.district)} hay ${cuantas} ${cuantas === 1 ? 'cine' : 'cines'}. ¿Cuál te queda cerca?`
+        : `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
+      opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: cuantas ? null : c.km })),
       intent,
       contexto: recordar(intent),
     };
