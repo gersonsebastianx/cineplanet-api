@@ -77,6 +77,12 @@ const NIVELES = {
     'la odisea el 31 de febrero', 'la odisea ayer', 'la odisea para 50 personas',
     'algo en iquitos', 'la odisea en real plaza', 'cineplanet estaba en magdalena',
     'quiero ver la odisea pero en la molina y si no en san borja',
+    // Traídas por la bitácora, de conversaciones reales del 17 de agosto.
+    'me refiero de la 5 pm a 6 pm en adelante, que peliculas puedo encontrar en trujillo',
+    'otra que me recomiendes aqui en trujillo',
+    'El del mall del sur?',
+    'quiero ver odisea mas tarde',
+    'inuyasha quiero ver',
   ],
 };
 
