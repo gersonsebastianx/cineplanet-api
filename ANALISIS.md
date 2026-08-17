@@ -167,6 +167,18 @@ afirmación.
 **Causa 6 — resuelta.** Las pruebas viven en `test/` y corren con `npm test`.
 Cada error reportado entra como caso antes de arreglarse.
 
+**Causa 5 — resuelta.** Formato e idioma estaban en los datos y se ignoraban en
+silencio: alguien pedía "doblada" y podía recibir subtitulada. Ahora se
+entienden, se filtran, y si no hay funciones que los cumplan se cede y **se
+dice**. Lo que sigue sin entenderse se nombra en la respuesta.
+
+**Causa 3 — resuelta.** La tarjeta dice qué heredó del turno anterior —"Sobre La
+Odisea · CP Salaverry, como antes"— así que reutilizar algo equivocado deja de
+ser invisible.
+
+**Causa 4 — pendiente.** Es el refactor de `resolve()` y ahora hay pruebas que lo
+respaldan, que era la condición para hacerlo con red.
+
 ## En qué orden vale la pena atacarlo
 
 1. **Causa 1 y 2 juntas** — es un solo cambio en la función de coincidencia y

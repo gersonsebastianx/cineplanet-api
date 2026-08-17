@@ -136,6 +136,21 @@ const GENEROS = [
   { pide: /\b(concierto|conciertos|musical)\b/, generos: ['Concierto'], dice: 'de concierto', nada: 'ningún concierto' },
 ];
 
+// Formato e idioma vienen en los datos de cada función y hasta ahora se
+// ignoraban en silencio: alguien pedía "doblada" y podía recibir subtitulada.
+// El catálogo sólo usa 2D, REGULAR y PRIME; "3D" se acepta como palabra porque
+// la gente la dice, y si no hay funciones así se le avisa.
+const FORMATOS = [
+  { pide: /\bprime\b/, valor: 'PRIME', dice: 'PRIME' },
+  { pide: /\b3\s?d\b/, valor: '3D', dice: '3D' },
+  { pide: /\b2\s?d\b/, valor: '2D', dice: '2D' },
+  { pide: /\bregular\b/, valor: 'REGULAR', dice: 'regular' },
+];
+const IDIOMAS = [
+  { pide: /\bdoblad[ao]s?\b|\ben\s+espanol\b|\bespanol\b/, valor: 'DOBLADA', dice: 'doblada' },
+  { pide: /\bsubtitulad[ao]s?\b|\bsubtitulos?\b|\bsubs\b/, valor: 'SUBTITULAD', dice: 'subtitulada' },
+];
+
 /** Fecha de hoy en horario de Lima, como YYYY-MM-DD. */
 export function limaToday() {
   return new Date(Date.now() - 5 * 3600 * 1000).toISOString().slice(0, 10);
@@ -401,6 +416,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Un distrito sin sede propia igual dice dónde está la persona.
   const t = norm(text);
   const genero = GENEROS.find((g) => g.pide.test(norm(text))) ?? null;
+  const formato = FORMATOS.find((f) => f.pide.test(norm(text))) ?? null;
+  const idioma = IDIOMAS.find((i) => i.pide.test(norm(text))) ?? null;
   // Lo que disparó el género ya está explicado: "niños" no es un título.
   const dichoGenero = genero ? (genero.pide.exec(norm(text))?.[0] ?? '') : '';
   const ciudadSinSede = Object.keys(CIUDADES_SIN_SEDE).find((c) =>
@@ -449,6 +466,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(district ? tokens(district) : []),
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
     ...tokens(dichoGenero),
+    ...tokens(formato ? (formato.pide.exec(norm(text))?.[0] ?? '') : ''),
+    ...tokens(idioma ? (idioma.pide.exec(norm(text))?.[0] ?? '') : ''),
     ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
   ]);
   const sobrantes = tokens(text).filter((w) => !atribuidas.has(w) && w.length >= 4);
@@ -476,6 +495,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     seats: acotarPersonas(people ? +people[1] : worded ? worded[1] : pareja ? 2 : null),
     lugarDesconocido,
     sobrantes,
+    formato: formato ? { valor: formato.valor, dice: formato.dice } : null,
+    idioma: idioma ? { valor: idioma.valor, dice: idioma.dice } : null,
     genero: genero
       ? { generos: genero.generos, apt: !!genero.apt, dice: genero.dice, nada: genero.nada }
       : null,

@@ -36,6 +36,8 @@ const recordar = (i) => ({
   from: i.from,
   to: i.to,
   seats: i.seats,
+  formato: i.formato ?? null,
+  idioma: i.idioma ?? null,
 });
 
 const nowMinutesLima = () => {
@@ -119,6 +121,8 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
         from: fresco.from ?? contexto.from ?? null,
         to: fresco.to ?? contexto.to ?? null,
         seats: fresco.seats ?? contexto.seats ?? null,
+        formato: fresco.formato ?? contexto.formato ?? null,
+        idioma: fresco.idioma ?? contexto.idioma ?? null,
       }
     : fresco;
 
@@ -377,8 +381,22 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     };
   }
 
+  // Formato e idioma son preferencias duras mientras existan funciones que las
+  // cumplan; si no, se ceden y se dice, igual que con la hora.
+  const cumplen = all.filter(
+    (s) =>
+      (!intent.formato || s.formats.includes(intent.formato.valor)) &&
+      (!intent.idioma || s.languages.includes(intent.idioma.valor)),
+  );
+  const cedido = [];
+  if ((intent.formato || intent.idioma) && !cumplen.length) {
+    if (intent.formato) cedido.push(intent.formato.dice);
+    if (intent.idioma) cedido.push(intent.idioma.dice);
+  }
+  const disponibles = cumplen.length ? cumplen : all;
+
   const date = intent.date ?? today;
-  const inWindow = all.filter(
+  const inWindow = disponibles.filter(
     (s) =>
       s.date === date &&
       (intent.from == null || s.minutes >= intent.from) &&
@@ -390,18 +408,18 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   let elegidas = inWindow;
   let ajuste = null;
   if (!elegidas.length) {
-    const sameDay = all.filter((s) => s.date === date);
+    const sameDay = disponibles.filter((s) => s.date === date);
     if (sameDay.length) {
       elegidas = sameDay;
       ajuste = intent.from != null ? 'hora' : null;
     } else {
       // El día pedido no existe: se busca el más cercano, hacia adelante primero
       // y hacia atrás si la película ya termina su temporada antes de esa fecha.
-      const later = all.filter((s) => s.date > date);
-      const earlier = all.filter((s) => s.date < date);
+      const later = disponibles.filter((s) => s.date > date);
+      const earlier = disponibles.filter((s) => s.date < date);
       const target = later.length ? later[0].date : earlier.length ? earlier[earlier.length - 1].date : null;
       if (target) {
-        const delDia = all.filter((s) => s.date === target);
+        const delDia = disponibles.filter((s) => s.date === target);
         const enVentana = delDia.filter(
           (s) =>
             (intent.from == null || s.minutes >= intent.from) &&
@@ -452,9 +470,28 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     mapa = null;
   }
 
+  // Lo heredado del turno anterior se nombra. Rellenar en silencio es lo que
+  // hizo que alguien preguntara por una película y recibiera otra sin notarlo.
+  const heredado = [];
+  if (contexto && !fresco.movie && intent.movie) heredado.push(intent.movie.title);
+  if (contexto && !fresco.cinema && intent.cinema) heredado.push(intent.cinema.name);
+
+  // Todo lo que no se pudo usar se nombra. Callarlo es lo que hacía que la
+  // respuesta pareciera sorda aunque fuera correcta.
+  const noUsado = [];
+  if (cedido.length) noUsado.push(`no hay funciones ${cedido.join(' ni ')}`);
+  if (fresco.sobrantes.length) noUsado.push(`no entendí «${fresco.sobrantes.join(' ')}»`);
+
   return {
     estado: 'ok',
     ajuste,
+    noUsado: noUsado.length ? noUsado : null,
+    heredado: heredado.length ? heredado : null,
+    preferencias: {
+      formato: intent.formato?.dice ?? null,
+      idioma: intent.idioma?.dice ?? null,
+      respetadas: !cedido.length,
+    },
     contexto: recordar(intent),
     // Se pregunta siempre que no lo haya dicho: una entrada o dos cambia por
     // completo qué butacas sirven, y adivinarlo mal se nota recién al pagar.

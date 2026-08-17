@@ -131,3 +131,26 @@ test('«este fin de semana» cae en sábado', () => {
   const r = leer('la odisea este fin de semana en salaverry');
   assert.equal(new Date(`${r.date}T12:00:00Z`).getUTCDay(), 6);
 });
+
+// ── Formato e idioma: estaban en los datos y se ignoraban ────────────────────
+
+test('«doblada» y «subtitulada» se entienden', () => {
+  assert.equal(leer('la odisea doblada en salaverry').idioma?.valor, 'DOBLADA');
+  assert.equal(leer('la odisea subtitulada en salaverry').idioma?.valor, 'SUBTITULAD');
+  assert.equal(leer('la odisea en español en salaverry').idioma?.valor, 'DOBLADA');
+});
+
+test('«prime» y «3d» se entienden como formato', () => {
+  assert.equal(leer('la odisea prime en salaverry').formato?.valor, 'PRIME');
+  assert.equal(leer('la odisea en 3d en salaverry').formato?.valor, '3D');
+});
+
+test('pedir formato o idioma no deja palabras sin explicar', () => {
+  for (const f of [
+    'la odisea doblada en salaverry',
+    'la odisea prime mañana en salaverry',
+    'la odisea subtitulada en 3d en salaverry',
+  ]) {
+    assert.deepEqual(leer(f).sobrantes, [], f);
+  }
+});
