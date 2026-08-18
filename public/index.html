@@ -681,14 +681,7 @@ async function consultar(valor) {
   if (datos) {
     responder(datos);
     recordarBusqueda(datos);
-    // Lo recordado del dispositivo arranca la conversación: quien vuelve a su cine
-// de siempre ya no tiene que decir dónde está. Cualquier lugar que mencione lo
-// pisa, y la tarjeta dice "como antes" para que se vea qué se supuso.
-(() => {
-  const guardado = cineRecordado();
-  if (guardado) contexto = { cinemaId: guardado.id, coords: guardado.coords ?? null };
-})();
-pintarSugerencias();
+    pintarSugerencias();
   }
 }
 
@@ -744,6 +737,14 @@ async function pintarSugerencias() {
     ejemplos.append(b);
   }
 }
+// Lo recordado en este dispositivo arranca la conversación: quien vuelve a su
+// cine de siempre ya no tiene que decir dónde está. Va **una vez al abrir**, no
+// después de cada respuesta: puesto dentro del ciclo pisaba la sede recién
+// elegida con la vieja.
+(() => {
+  const guardado = cineRecordado();
+  if (guardado) contexto = { cinemaId: guardado.id, coords: guardado.coords ?? null };
+})();
 pintarSugerencias();
 </script>
 </body>
