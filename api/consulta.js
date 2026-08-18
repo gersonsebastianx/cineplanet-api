@@ -18,7 +18,6 @@ export default async function handler(req, res) {
     const respuesta = await resolveQuery(texto.slice(0, 300), {
       contexto: contexto && typeof contexto === 'object' ? contexto : null,
     });
-    contar(respuesta);
     registrar(texto, respuesta);
     // La web siempre manda una sesión; lo que llega sin ella no es una persona
     // usando la página sino una comprobación —un curl de verificación, un
@@ -35,18 +34,6 @@ export default async function handler(req, res) {
         : 'No pude resolver esa consulta.',
     });
   }
-}
-
-// Conteo en memoria de la instancia, sólo para esta invocación. Cada función
-// serverless vive aislada, así que esto no acumula nada entre visitas: lo que
-// de verdad deja rastro es el registro de abajo.
-export const populares = new Map();
-
-function contar(respuesta) {
-  const p = respuesta?.pedido;
-  if (!p?.pelicula || !p?.cine) return;
-  const clave = `${p.pelicula} en ${p.cine}`;
-  populares.set(clave, (populares.get(clave) ?? 0) + 1);
 }
 
 /**

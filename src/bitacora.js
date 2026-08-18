@@ -105,6 +105,30 @@ async function accessToken() {
   return token.valor;
 }
 
+/**
+ * Lee la hoja de consultas. Sirve para calcular lo que más se busca: en Vercel
+ * cada petición corre en una instancia distinta y no comparten memoria, así que
+ * un contador en RAM nunca acumula nada. La hoja sí.
+ *
+ * Nunca lanza: sin bitácora, quien llame se arregla con lo que tenga.
+ */
+export async function leerFilas(limite = 500) {
+  if (!conCuentaDeServicio()) return [];
+  try {
+    const res = await fetch(
+      `https://sheets.googleapis.com/v4/spreadsheets/${process.env.SHEET_ID}/values/A:I`,
+      { headers: { authorization: `Bearer ${await accessToken()}` } },
+    );
+    if (!res.ok) return [];
+    const filas = (await res.json()).values ?? [];
+    // Sin el encabezado y sólo lo reciente: lo de hace un mes ya no representa
+    // lo que la gente busca hoy, y la cartelera cambió.
+    return filas.slice(1).slice(-limite);
+  } catch {
+    return [];
+  }
+}
+
 /** La fila tal como queda en la hoja, en el orden de los encabezados. */
 function armarFila(datos) {
   const { sesion, texto, respuesta } = { ...datos };
