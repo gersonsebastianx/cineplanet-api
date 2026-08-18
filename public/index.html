@@ -532,8 +532,12 @@ function tarjeta(r) {
     const bloque = el('div', 'avisos', avisos.join(' · '));
     // Donde se nota que respondimos con el cine equivocado es justo donde tiene
     // que estar el remedio, y no en una pantalla de ajustes.
-    if (r.pedido?.cine) {
-      const cambiar = el('button', 'cambiar', 'Cambiar');
+    //
+    // Sólo cuando **la sede** fue lo heredado: junto a "Sobre La Odisea, como
+    // antes" el botón se leía como si fuera a cambiar la película. Y dice de
+    // qué se trata, porque un "Cambiar" suelto no lo aclara.
+    if (r.pedido?.cine && r.heredado?.includes(r.pedido.cine)) {
+      const cambiar = el('button', 'cambiar', 'Cambiar de cine');
       cambiar.type = 'button';
       cambiar.addEventListener('click', () => pedirCine(bloque));
       bloque.append(' ', cambiar);
