@@ -83,6 +83,13 @@ const NIVELES = {
     'El del mall del sur?',
     'quiero ver odisea mas tarde',
     'inuyasha quiero ver',
+    // Del 18 de agosto: tres personas distintas escribieron "sherk" en cuatro
+    // minutos, y una pidió cambiar de sede.
+    'sherk quiero ver',
+    'Sherk una entrada',
+    'otro cine',
+    'quiero dos entradas para la odisea mañana',
+    'en cineplanet trujillo',
   ],
 };
 
