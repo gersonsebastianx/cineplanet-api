@@ -421,3 +421,19 @@ test('cuando no hay del género pedido, igual se ofrece algo', async () => {
   const b = await resolve('en salaverry', { contexto: a.contexto });
   assert.ok((b.opciones ?? []).length > 0 || b.pedido, 'siempre hay por dónde seguir');
 });
+
+test('un intercambio de letras es un solo error, no dos', () => {
+  // Reportado: "Sherk una entrada" y "sHERK" no encontraban nada. Al teclear,
+  // "sherk" por "shrek" es un dedo que se adelantó — el error más común — y la
+  // cuenta simple lo cobraba doble, pasándose del margen.
+  for (const f of ['Sherk una entrada', 'sHERK', 'la odisae', 'toy stroy']) {
+    assert.notEqual(leer(f).movie, null, f);
+  }
+  assert.match(leer('sherk').movie?.title ?? '', /Shrek/);
+});
+
+test('el intercambio no abre la puerta a cualquier parecido', () => {
+  // La red de siempre sigue puesta: palabras comunes no eligen título.
+  assert.equal(leer('Pero en cineplanet magdalena vi que sí').movie, null);
+  assert.equal(leer('la más nueva').movie, null);
+});

@@ -397,20 +397,29 @@ function parseTime(text) {
  * Una letra en palabras cortas, dos en las largas — "estori" debe llegar a
  * "story", pero "nueva" no debería llegar a "nueve" sin más apoyo.
  */
+/**
+ * Distancia de edición contando el **intercambio de dos letras contiguas como
+ * un solo error**, que es lo que es al teclear: "sherk" por "shrek" es un dedo
+ * que se adelantó, no dos letras equivocadas. Con la cuenta simple eso valía 2
+ * y se pasaba del margen, así que "Sherk una entrada" no encontraba nada.
+ */
 function closeEnough(a, b) {
   const margen = Math.max(a.length, b.length) >= 6 ? 2 : 1;
   if (Math.abs(a.length - b.length) > margen || a.length < 3) return false;
-  const d = Array.from({ length: b.length + 1 }, (_, j) => j);
+  // Matriz completa: la transposición necesita mirar dos filas atrás.
+  const d = Array.from({ length: a.length + 1 }, (_, i) =>
+    Array.from({ length: b.length + 1 }, (_, j) => (i === 0 ? j : j === 0 ? i : 0)),
+  );
   for (let i = 1; i <= a.length; i++) {
-    let prev = d[0];
-    d[0] = i;
     for (let j = 1; j <= b.length; j++) {
-      const tmp = d[j];
-      d[j] = Math.min(d[j] + 1, d[j - 1] + 1, prev + (a[i - 1] === b[j - 1] ? 0 : 1));
-      prev = tmp;
+      const costo = a[i - 1] === b[j - 1] ? 0 : 1;
+      d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + costo);
+      if (i > 1 && j > 1 && a[i - 1] === b[j - 2] && a[i - 2] === b[j - 1]) {
+        d[i][j] = Math.min(d[i][j], d[i - 2][j - 2] + 1);
+      }
     }
   }
-  return d[b.length] <= margen;
+  return d[a.length][b.length] <= margen;
 }
 
 // Palabras que aparecen en tantos nombres de cine que por sí solas no eligen
