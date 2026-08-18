@@ -135,14 +135,6 @@
   .cta b{position:relative;font-weight:600}
   .avisos{margin-top:14px;padding:9px 12px;border-radius:12px;border:1px dashed var(--line);
     font-size:12.5px;color:var(--ink-2);letter-spacing:-.005em;text-align:center}
-  /* Discreto a propósito: sólo importa cuando la sede heredada está mal. */
-  .cambiar{border:0;background:none;padding:0 2px;font:inherit;color:var(--ink);
-    text-decoration:underline;text-underline-offset:3px;cursor:pointer}
-  .cambiar:hover{color:var(--rose)}
-  .sedes{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
-  .sedes button{border:1px solid var(--line);background:var(--card);color:var(--ink);
-    border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer}
-  .sedes button:hover{border-color:var(--ink-3)}
   .nota{margin-top:12px;font-size:12.5px;line-height:1.5;color:var(--ink-3);text-align:center;
     letter-spacing:-.005em}
 
@@ -315,39 +307,6 @@ const texto = document.getElementById('texto');
 const enviar = document.getElementById('enviar');
 // El hilo de la conversación vive acá: sin esto, "en Barranco" llega huérfano.
 let contexto = null;
-
-// El cine elegido se recuerda **en este dispositivo**, nunca en el servidor.
-// Sin esto, cada visita empieza preguntando "¿en qué distrito estás?" y ese ida
-// y vuelta era la fricción más repetida de las primeras conversaciones reales.
-//
-// Caduca a las dos semanas: quien vuelve al mes probablemente cambió de barrio,
-// de ciudad o de costumbre, y suponer sale más caro que preguntar.
-const MEMORIA = 'cineplanet:cine';
-const QUINCE_DIAS = 14 * 24 * 3600 * 1000;
-
-function cineRecordado() {
-  try {
-    const crudo = localStorage.getItem(MEMORIA);
-    if (!crudo) return null;
-    const dato = JSON.parse(crudo);
-    if (!dato?.id || Date.now() - (dato.ts ?? 0) > QUINCE_DIAS) {
-      localStorage.removeItem(MEMORIA);
-      return null;
-    }
-    return dato;
-  } catch {
-    return null;
-  }
-}
-
-function recordarCine(id, nombre, coords) {
-  try {
-    if (id) localStorage.setItem(MEMORIA, JSON.stringify({ id, nombre, coords, ts: Date.now() }));
-    else localStorage.removeItem(MEMORIA);
-  } catch {
-    /* modo privado: se sigue sin memoria, que es el comportamiento de antes */
-  }
-}
 // Identificador aleatorio de esta pestaña, sólo para agrupar los turnos de una
 // misma conversación en la bitácora. No identifica a nadie y muere al cerrarla.
 const sesion = (() => {
@@ -528,22 +487,7 @@ function tarjeta(r) {
     ...(r.heredado ? [`Sobre ${r.heredado.join(' · ')}, como antes`] : []),
     ...(r.noUsado ?? []),
   ];
-  if (avisos.length) {
-    const bloque = el('div', 'avisos', avisos.join(' · '));
-    // Donde se nota que respondimos con el cine equivocado es justo donde tiene
-    // que estar el remedio, y no en una pantalla de ajustes.
-    //
-    // Sólo cuando **la sede** fue lo heredado: junto a "Sobre La Odisea, como
-    // antes" el botón se leía como si fuera a cambiar la película. Y dice de
-    // qué se trata, porque un "Cambiar" suelto no lo aclara.
-    if (r.pedido?.cine && r.heredado?.includes(r.pedido.cine)) {
-      const cambiar = el('button', 'cambiar', 'Cambiar de cine');
-      cambiar.type = 'button';
-      cambiar.addEventListener('click', () => pedirCine(bloque));
-      bloque.append(' ', cambiar);
-    }
-    card.append(bloque);
-  }
+  if (avisos.length) card.append(el('div', 'avisos', avisos.join(' · ')));
 
   card.append(el('div', 'nota', r.mapa
     ? `${r.mapa.libres} de ${r.mapa.total} butacas libres · eliges asientos y pagas allá · tienes 5 minutos desde que abres Cineplanet`
@@ -570,49 +514,8 @@ function elegir(o) {
   consultar(o.nombre);
 }
 
-/**
- * Ofrece las sedes más cercanas a donde se ubicó a la persona por última vez.
- * Tres, no 43: una lista completa sería peor que la pregunta que reemplaza.
- */
-async function pedirCine(bloque) {
-  if (bloque.querySelector('.sedes')) return;
-  const fila = el('div', 'sedes');
-  bloque.append(fila);
-  let cines = [];
-  try {
-    const c = contexto?.coords;
-    const params = new URLSearchParams();
-    if (c) {
-      params.set('lat', c.lat);
-      params.set('lon', c.lon);
-    }
-    if (contexto?.cinemaId) params.set('salvo', contexto.cinemaId);
-    const res = await fetch(`/api/cines?${params}`);
-    cines = (await res.json()).cines ?? [];
-  } catch {
-    cines = [];
-  }
-  fila.replaceChildren();
-  for (const c of cines) {
-    const b = el('button', null, c.nombre);
-    b.type = 'button';
-    b.addEventListener('click', () => {
-      recordarCine(c.id, c.nombre, null);
-      contexto = { ...(contexto ?? {}), cinemaId: c.id };
-      consultar(c.nombre);
-    });
-    fila.append(b);
-  }
-  // Siempre queda la salida de escribirlo, que es como lo hace la gente hoy.
-  fila.append(el('span', 'nota', cines.length ? 'o escribe tu distrito' : 'escribe tu distrito o ciudad'));
-}
-
 function responder(r) {
   if (r.contexto) contexto = r.contexto;
-  // Cada vez que se confirma una sede, se guarda para la próxima visita.
-  if (r.contexto?.cinemaId) {
-    recordarCine(r.contexto.cinemaId, r.pedido?.cine ?? null, r.contexto.coords ?? null);
-  }
   if (r.estado === 'falta') return decir(r.pregunta);
   if (r.estado === 'cartelera' || r.estado === 'confirmar') {
     decir(r.pregunta);
@@ -741,14 +644,6 @@ async function pintarSugerencias() {
     ejemplos.append(b);
   }
 }
-// Lo recordado en este dispositivo arranca la conversación: quien vuelve a su
-// cine de siempre ya no tiene que decir dónde está. Va **una vez al abrir**, no
-// después de cada respuesta: puesto dentro del ciclo pisaba la sede recién
-// elegida con la vieja.
-(() => {
-  const guardado = cineRecordado();
-  if (guardado) contexto = { cinemaId: guardado.id, coords: guardado.coords ?? null };
-})();
 pintarSugerencias();
 </script>
 </body>
