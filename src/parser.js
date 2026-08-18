@@ -103,6 +103,22 @@ const WORD_NUMBERS = {
 // cada sede sí sale de los datos (`secondAddress`), así que acá sólo quedan los
 // vacíos: sirven para ofrecer la sede más cercana en vez de decir que no existe.
 // Escritos a mano por necesidad — Cineplanet no publica lo que no tiene.
+/**
+ * Cómo se abrevian los distritos en el habla diaria. Alguien escribió "vivo en
+ * SJM" y no se ubicó; peor aún, "san juan de miraflores" terminaba en San Juan
+ * de Lurigancho. Se expanden antes de buscar, así siguen un solo camino.
+ */
+// Sólo las de tres letras o más y sin ambigüedad: "si" por San Isidro se comió
+// el "sí" de «Vi que en Cineplanet magdalena sí estaba», y "pl" o "sb" tienen el
+// mismo riesgo. Una abreviatura que puede ser otra palabra no vale la pena.
+const ABREVIATURAS = {
+  sjm: 'san juan de miraflores',
+  sjl: 'san juan de lurigancho',
+  smp: 'san martin de porres',
+  vmt: 'villa maria del triunfo',
+  ves: 'villa el salvador',
+};
+
 export const DISTRICTS = {
   barranco: [-12.1465, -77.0206],
   'san isidro': [-12.0972, -77.0365],
@@ -411,6 +427,11 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
   if (!want.size) return null;
   const glued = list.join('');
   const scored = [];
+  // Todas las palabras que usa esta lista. Sirve para saber si algo que la
+  // persona escribió *pertenece a este campo*: "miraflores" nombra un distrito,
+  // "doblada" no nombra ninguno. Sólo lo primero puede contradecir a un
+  // candidato; lo segundo habla de otra cosa y no debe castigarlo.
+  const vocabulario = new Set(candidates.flatMap((c) => tokens(label(c))));
 
   for (const item of candidates) {
     const have = tokens(label(item));
@@ -451,7 +472,18 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
     if (weak && !completo && hits.every((w) => weak.has(w))) continue;
 
     const peso = pegado ? have.length : exactos.length + aprox.length * 0.8;
-    const score = peso / have.length + hits.length * 0.1;
+    // Lo dicho y no explicado también informa: "san juan de miraflores" ganaba
+    // para CP San Juan de Lurigancho —cubre "san" y "juan"— ignorando que la
+    // persona dijo "miraflores", que es justo la palabra que las distingue.
+    // Sin este castigo, el candidato que contradice lo escrito puede ganar.
+    const ignoradas = list.filter(
+      (q) =>
+        q.length >= 5 &&
+        !COMUNES.has(q) &&
+        vocabulario.has(q) &&
+        !have.some((w) => w === q || closeEnough(q, w)),
+    );
+    const score = peso / have.length + hits.length * 0.1 - ignoradas.length * 0.35;
     // Cuando la única evidencia es aproximada no hay certeza, hay sospecha.
     const confianza = exactos.length || pegado ? 'alta' : 'media';
     scored.push({ item, score, hits, confianza });
@@ -628,6 +660,13 @@ const SALUDO =
 const CORTESIA = /^(gracias|graciass?|ok|oka|okey|listo|ya|bueno|perfecto|genial|(?:ja|je|ji|ha){2,}|a{3,}|\?+|\.+|x+)[\s!¡?¿.]*$/;
 
 export function parse(text, { movies, cinemas, today = limaToday() }) {
+  // Las abreviaturas se expanden primero: el resto del intérprete no tiene por
+  // qué enterarse de que existen.
+  for (const [corto, largo] of Object.entries(ABREVIATURAS)) {
+    const re = new RegExp(`\\b${corto}\\b`, 'gi');
+    if (re.test(norm(text))) text = norm(text).replace(re, largo);
+  }
+
   // Se busca por nombre y por distrito real: "en jesús maría" debe encontrar
   // CP Salaverry, que es donde está, aunque el nombre no lo diga.
   const porNombre = bestByTokens(text, cinemas, (c) => c.name, { weak: WEAK_VENUE, minScore: 0.45 });
@@ -635,7 +674,15 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     weak: WEAK_VENUE,
     minScore: 0.45,
   });
-  let cinemaHit = porNombre?.item ? porNombre : porDistrito?.item ? porDistrito : null;
+  // Gana el mejor puntaje, no el que se probó primero: el distrito de una sede
+  // puede describirla mejor que su nombre. CP Mall del Sur está en San Juan de
+  // Miraflores y su nombre no lo dice.
+  let cinemaHit =
+    porNombre?.item && porDistrito?.item
+      ? porDistrito.score > porNombre.score
+        ? porDistrito
+        : porNombre
+      : (porNombre?.item ? porNombre : porDistrito?.item ? porDistrito : null);
   // Un distrito sin sede propia igual dice dónde está la persona.
   const t = norm(text);
   // "¿qué otra me recomiendas?" pide una lista, no una película concreta.
@@ -709,9 +756,20 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     const sinTitulo = tokens(text)
       .filter((w) => !delTitulo.has(w))
       .join(' ');
+    const porNom = bestByTokens(sinTitulo, cinemas, (c) => c.name, {
+      weak: WEAK_VENUE,
+      minScore: 0.45,
+    });
+    const porDist = bestByTokens(sinTitulo, cinemas, (c) => c.district ?? '', {
+      weak: WEAK_VENUE,
+      minScore: 0.45,
+    });
     const otra =
-      bestByTokens(sinTitulo, cinemas, (c) => c.name, { weak: WEAK_VENUE, minScore: 0.45 }) ??
-      bestByTokens(sinTitulo, cinemas, (c) => c.district ?? '', { weak: WEAK_VENUE, minScore: 0.45 });
+      porNom?.item && porDist?.item
+        ? porDist.score > porNom.score
+          ? porDist
+          : porNom
+        : (porNom?.item ? porNom : porDist?.item ? porDist : null);
     cinemaHit = otra?.item ? otra : null;
   }
 

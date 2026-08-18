@@ -443,7 +443,7 @@ function tarjeta(r) {
     for (const [txt, n] of [['Una', 1], ['Dos', 2], ['Cuatro', 4]]) {
       const b = el('button', 'alt', txt);
       b.type = 'button';
-      b.addEventListener('click', () => consultar(`para ${n} personas`));
+      b.addEventListener('click', () => consultar(`para ${n} ${n === 1 ? 'persona' : 'personas'}`));
       fila.append(b);
     }
     grupo.append(fila);
@@ -636,7 +636,7 @@ async function pintarSugerencias() {
     }
   }
   // Sin historial propio ni ajeno, hay que sugerir algo para empezar.
-  if (!lista.length) lista = ['La Odisea mañana en la tarde en Salaverry', 'Toy Story hoy en Trujillo'];
+  if (!lista.length) lista = ['La Odisea mañana en la tarde en Salaverry', '¿Qué dan hoy en Trujillo?'];
   ejemplos.replaceChildren();
   for (const t of lista) {
     const b = el('button', null, t);

@@ -379,3 +379,26 @@ test('las palabras que acompañan una hora nunca son un título', () => {
     assert.deepEqual(leer(f).sobrantes, [], f);
   }
 });
+
+// ── Traído por el tráfico real del lanzamiento ──────────────────────────────
+
+test('«san juan de miraflores» no manda a San Juan de Lurigancho', () => {
+  // Reportado por la bitácora: alguien buscó Moana desde SJM y lo mandamos al
+  // otro extremo de Lima. Cubría "san" y "juan" del nombre e ignoraba que la
+  // persona había dicho "miraflores", que es la palabra que los distingue.
+  assert.equal(leer('san juan de miraflores').cinema?.name, 'CP Mall del Sur');
+  assert.equal(leer('moana en san juan de miraflores').cinema?.name, 'CP Mall del Sur');
+  assert.equal(leer('san juan de lurigancho').cinema?.name, 'CP San Juan de Lurigancho');
+});
+
+test('las abreviaturas de distrito se entienden', () => {
+  // "vivo en SJM" respondía "no ubico SJM".
+  assert.equal(leer('vivo en SJM').cinema?.name, 'CP Mall del Sur');
+  assert.equal(leer('estoy en sjl').cinema?.name, 'CP San Juan de Lurigancho');
+  assert.equal(leer('en vmt').cinema?.name, 'CP Villa María del Triunfo');
+});
+
+test('una abreviatura no puede comerse una palabra común', () => {
+  // "si" por San Isidro rompía «Vi que en Cineplanet magdalena sí estaba».
+  assert.equal(leer('Vi que en Cineplanet magdalena si estaba').district, 'magdalena');
+});
