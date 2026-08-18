@@ -6,7 +6,7 @@
 
 import { movies, cinemas, showtimes, nearest } from './catalog.js';
 import { seatMap, bestBlocks, SalaAgotada } from './seatmap.js';
-import { parse, limaToday } from './parser.js';
+import { parse, limaToday, generoPorNombre } from './parser.js';
 
 const MISSING = {
   movie: 'No reconocí la película. ¿Cuál quieres ver?',
@@ -38,6 +38,11 @@ const recordar = (i) => ({
   seats: i.seats,
   formato: i.formato ?? null,
   idioma: i.idioma ?? null,
+  // Sin esto, "quiero ver algo de terror" → "¿en qué cine?" → "trujillo"
+  // devolvía la cartelera entera: se preguntaba dónde y se olvidaba el qué.
+  // Se guarda el nombre visible porque el contexto viaja como JSON y la regla
+  // que lo detecta no sobrevive al viaje.
+  genero: i.genero?.dice ?? null,
 });
 
 const nowMinutesLima = () => {
@@ -121,6 +126,7 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
         from: fresco.from ?? contexto.from ?? null,
         to: fresco.to ?? contexto.to ?? null,
         seats: fresco.seats ?? contexto.seats ?? null,
+        genero: fresco.genero ?? generoPorNombre(contexto.genero) ?? null,
         formato: fresco.formato ?? contexto.formato ?? null,
         idioma: fresco.idioma ?? contexto.idioma ?? null,
       }
@@ -365,6 +371,57 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
         };
       }
       if (intent.genero) {
+        // Nunca dejar a alguien sin por dónde seguir. Además, el género que
+        // publica Cineplanet es grueso y a veces desconcierta —"El Final de la
+        // Calle Oak" figura como Acción— así que filtrar y callarse esconde
+        // justo lo que la persona buscaba. Se dice que no hay, y se muestra
+        // lo que sí.
+        // Primero, si lo pedido existe otro día: es la respuesta que se busca
+        // —"hoy no, mañana sí"— y no obliga a preguntar de nuevo.
+        const otroDia = [];
+        for (const m of candidatas) {
+          const f = stillSellable(
+            await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
+            today,
+          );
+          const proxima = f.filter((s) => s.date > dia).sort((a, b) => a.date.localeCompare(b.date))[0];
+          if (proxima) otroDia.push({ titulo: m.title, dia: proxima.date });
+        }
+        if (otroDia.length) {
+          const cuandoOtro = sayDate(
+            otroDia.map((m) => m.dia).sort()[0],
+            today,
+          );
+          return {
+            estado: 'cartelera',
+            pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}, pero ${cuandoOtro} sí:`,
+            opciones: otroDia.slice(0, 6).map((m) => ({ nombre: m.titulo })),
+            intent,
+            contexto: recordar(intent),
+          };
+        }
+        // Si tampoco hay otro día, se ofrece lo que sí se da **ese mismo día**:
+        // decir "no hay nada para niños hoy" y listar películas de mañana es
+        // contradecirse en la misma respuesta.
+        const resto = [];
+        for (const m of movieList) {
+          const f = stillSellable(
+            await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
+            today,
+          );
+          if (f.some((s) => s.date === dia)) resto.push(m.title);
+        }
+        if (resto.length) {
+          return {
+            estado: 'cartelera',
+            pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
+              intent.said?.time ? ` ${intent.said.time}` : ''
+            }. Esto sí:`,
+            opciones: resto.slice(0, 6).map((t) => ({ nombre: t })),
+            intent,
+            contexto: recordar({ ...intent, genero: null }),
+          };
+        }
         return {
           estado: 'sin-cartelera',
           // Sin nombrar la franja, "no hay nada de terror hoy" es más rotundo de

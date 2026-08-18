@@ -402,3 +402,22 @@ test('una abreviatura no puede comerse una palabra común', () => {
   // "si" por San Isidro rompía «Vi que en Cineplanet magdalena sí estaba».
   assert.equal(leer('Vi que en Cineplanet magdalena si estaba').district, 'magdalena');
 });
+
+test('el género pedido sobrevive a la pregunta por el cine', async () => {
+  // Traído por la bitácora: «quiero ver una película de terror» → «¿en qué
+  // cine?» → «trujillo» devolvía la cartelera entera. Se preguntaba el dónde y
+  // se olvidaba el qué.
+  const { resolve } = await import('../src/resolve.js');
+  const a = await resolve('quiero ver una pelicula de terror');
+  const b = await resolve('en cineplanet trujillo', { contexto: a.contexto });
+  const dicho = b.pregunta ?? b.mensaje ?? '';
+  assert.match(dicho, /terror/i, 'la respuesta tiene que seguir hablando de terror');
+});
+
+test('cuando no hay del género pedido, igual se ofrece algo', async () => {
+  // Nunca un callejón sin salida: o lo hay otro día, o se muestra lo que sí hay.
+  const { resolve } = await import('../src/resolve.js');
+  const a = await resolve('algo para niños');
+  const b = await resolve('en salaverry', { contexto: a.contexto });
+  assert.ok((b.opciones ?? []).length > 0 || b.pedido, 'siempre hay por dónde seguir');
+});

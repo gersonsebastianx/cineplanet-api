@@ -187,6 +187,9 @@ export const CIUDADES_SIN_SEDE = {
 
 // Cómo pide la gente un género frente a cómo lo escribe Cineplanet. "Para
 // niños" no es un género suyo: es clasificación APT más animación o familiar.
+/** Recupera un género por su nombre visible, para heredarlo entre turnos. */
+export const generoPorNombre = (dice) => GENEROS.find((g) => g.dice === dice) ?? null;
+
 const GENEROS = [
   { pide: /\b(nin[oa]s?|infantil|familiar|en\s+familia|toda\s+la\s+familia|mis\s+hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
   { pide: /\b(terror|miedo|susto|horror)\b/, generos: ['Terror'], dice: 'de terror', nada: 'nada de terror' },
