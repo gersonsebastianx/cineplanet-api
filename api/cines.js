@@ -14,13 +14,18 @@ export default async function handler(req, res) {
     const lon = Number(req.query?.lon);
     const cerca =
       Number.isFinite(lat) && Number.isFinite(lon)
-        ? nearest(lista, { lat, lon }, 3)
+        ? nearest(lista, { lat, lon }, 4)
         : // Sin coordenadas no se puede acertar, así que se ofrece buscar por
           // distrito en vez de inventar tres sedes al azar.
           [];
     res.setHeader('cache-control', 'public, max-age=3600');
+    // Se descarta la sede actual: quien pulsa "Cambiar" ya sabe que no la quiere.
+    const salvo = req.query?.salvo;
     return res.status(200).json({
-      cines: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+      cines: cerca
+        .filter((c) => c.id !== salvo)
+        .slice(0, 3)
+        .map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
     });
   } catch (err) {
     return res.status(500).json({ cines: [], error: err.message });

@@ -577,7 +577,13 @@ async function pedirCine(bloque) {
   let cines = [];
   try {
     const c = contexto?.coords;
-    const res = await fetch(`/api/cines${c ? `?lat=${c.lat}&lon=${c.lon}` : ''}`);
+    const params = new URLSearchParams();
+    if (c) {
+      params.set('lat', c.lat);
+      params.set('lon', c.lon);
+    }
+    if (contexto?.cinemaId) params.set('salvo', contexto.cinemaId);
+    const res = await fetch(`/api/cines?${params}`);
     cines = (await res.json()).cines ?? [];
   } catch {
     cines = [];
