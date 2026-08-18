@@ -35,6 +35,7 @@ const STOP = new Set(
     'adelante partir desde despues antes hasta entre tipo aproximadamente alrededor ' +
     // Vocabulario de todos los días que jamás es un título.
     'peli pelis nose ni idea aburrido aburrida plan planes ganas rato ratito ' +
+    'cambiar cambia sede sedes local locales sitio lado ' +
     'media cuarto mediodia medianoche este esta estos estas proximo proxima ' +
     'pasado pasada semana finde fin trabajo chamba oficina clases ' +
     'temprano luego rato horario horarios funcion funciones franja ' +
@@ -839,6 +840,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
     cinemaOptions: cinemaHit?.tied?.length > 1 ? cinemaHit.tied : null,
     district: district ?? ciudadSinSede ?? ciudadConSede?.nombre ?? null,
+    // "otro cine" no es un lugar nuevo ni una película: es pedir cambiar de
+    // sede. Sin entenderlo, la respuesta repetía el mismo cine y parecía sorda.
+    otroCine:
+      /\b(otro|otra)\s+(cine|cinepla\w*|sede|local|sitio|lugar|lado)\b|\bcambiar\s+(de\s+)?(cine|sede)\b|\ben\s+otro\s+lado\b/.test(
+        norm(text),
+      ),
     fuera: FUERA.find((f) => f.pide.test(norm(text)))?.tema ?? null,
     // Nombró un centro comercial que no está en los datos de Cineplanet. No se
     // puede afirmar si hay sede ahí o no, así que se pregunta por el distrito

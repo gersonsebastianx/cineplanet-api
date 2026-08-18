@@ -162,6 +162,30 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
       contexto: recordar(intent),
     };
   }
+  // Pidió cambiar de sede: se suelta la que veníamos usando y se ofrecen las de
+  // alrededor. Antes esto caía en el camino normal, heredaba el mismo cine y
+  // devolvía la misma respuesta, como si no hubiera escuchado.
+  if (fresco.otroCine && !fresco.cinema && !fresco.district) {
+    const donde = intent.districtCoords ?? previo?.cinema ?? intent.cinema;
+    const cerca = donde ? nearest(cinemaList, donde, 4).filter((c) => c.id !== previo?.cinema?.id) : [];
+    if (cerca.length) {
+      return {
+        estado: 'elige-cine',
+        pregunta: '¿A cuál prefieres ir?',
+        opciones: cerca.slice(0, 3).map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+        intent,
+        // Se suelta la sede pero no dónde está la persona: eso sigue sirviendo.
+        contexto: recordar({ ...intent, cinema: null }),
+      };
+    }
+    return {
+      estado: 'falta',
+      pregunta: '¿En qué distrito o ciudad? Te digo qué cines hay ahí.',
+      intent,
+      contexto: recordar({ ...intent, cinema: null }),
+    };
+  }
+
   if (fresco.saludo) {
     const abre = fresco.saludo === 'saludo' ? 'Hola. ' : '';
     return {

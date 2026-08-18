@@ -437,3 +437,19 @@ test('el intercambio no abre la puerta a cualquier parecido', () => {
   assert.equal(leer('Pero en cineplanet magdalena vi que sí').movie, null);
   assert.equal(leer('la más nueva').movie, null);
 });
+
+test('«otro cine» pide cambiar de sede, no repite la misma', async () => {
+  // Reportado: se escribía "otro cine" y volvía la misma respuesta, como si no
+  // hubiera escuchado. La frase no era ni un lugar ni un título.
+  const { resolve } = await import('../src/resolve.js');
+  const a = await resolve('shrek hoy en cp ventanilla');
+  for (const f of ['otro cine', 'en otra sede', 'cambiar de cine']) {
+    const b = await resolve(f, { contexto: a.contexto });
+    assert.equal(b.estado, 'elige-cine', f);
+    assert.ok(b.opciones.length > 0, f);
+    assert.ok(
+      b.opciones.every((o) => o.nombre !== 'CP Ventanilla'),
+      'no puede ofrecer la sede que se quiere dejar',
+    );
+  }
+});

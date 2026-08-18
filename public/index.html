@@ -135,6 +135,14 @@
   .cta b{position:relative;font-weight:600}
   .avisos{margin-top:14px;padding:9px 12px;border-radius:12px;border:1px dashed var(--line);
     font-size:12.5px;color:var(--ink-2);letter-spacing:-.005em;text-align:center}
+  /* Discreto a propósito: importa poco hasta que la sede es la equivocada. */
+  .cambiar{border:0;background:none;padding:0 2px;font:inherit;color:var(--ink);
+    text-decoration:underline;text-underline-offset:3px;cursor:pointer}
+  .cambiar:hover{color:var(--rose)}
+  .sedes{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
+  .sedes button{border:1px solid var(--line);background:var(--card);color:var(--ink);
+    border-radius:999px;padding:6px 12px;font:inherit;font-size:12.5px;cursor:pointer}
+  .sedes button:hover{border-color:var(--ink-3)}
   .nota{margin-top:12px;font-size:12.5px;line-height:1.5;color:var(--ink-3);text-align:center;
     letter-spacing:-.005em}
 
@@ -487,7 +495,18 @@ function tarjeta(r) {
     ...(r.heredado ? [`Sobre ${r.heredado.join(' · ')}, como antes`] : []),
     ...(r.noUsado ?? []),
   ];
-  if (avisos.length) card.append(el('div', 'avisos', avisos.join(' · ')));
+  // El bloque aparece también sin avisos si hay sede: cambiar de cine se puede
+  // querer en cualquier respuesta, no sólo cuando la sede vino heredada.
+  if (avisos.length || r.pedido?.cine) {
+    const bloque = el('div', 'avisos', avisos.join(' · '));
+    if (r.pedido?.cine) {
+      const cambiar = el('button', 'cambiar', 'Cambiar de cine');
+      cambiar.type = 'button';
+      cambiar.addEventListener('click', () => pedirCine(bloque));
+      bloque.append(avisos.length ? ' · ' : '', cambiar);
+    }
+    card.append(bloque);
+  }
 
   card.append(el('div', 'nota', r.mapa
     ? `${r.mapa.libres} de ${r.mapa.total} butacas libres · eliges asientos y pagas allá · tienes 5 minutos desde que abres Cineplanet`
@@ -512,6 +531,40 @@ function tarjeta(r) {
 function elegir(o) {
   if (o.id) contexto = { ...(contexto ?? {}), cinemaId: o.id };
   consultar(o.nombre);
+}
+
+/**
+ * Ofrece las sedes más cercanas a la que se está mirando. Tres, no 43: una
+ * lista completa sería peor que la pregunta que reemplaza.
+ */
+async function pedirCine(bloque) {
+  if (bloque.querySelector('.sedes')) return;
+  const fila = el('div', 'sedes');
+  bloque.append(fila);
+  let cines = [];
+  try {
+    const params = new URLSearchParams();
+    const c = contexto?.coords;
+    if (c) {
+      params.set('lat', c.lat);
+      params.set('lon', c.lon);
+    }
+    if (contexto?.cinemaId) params.set('salvo', contexto.cinemaId);
+    cines = (await (await fetch(`/api/cines?${params}`)).json()).cines ?? [];
+  } catch {
+    cines = [];
+  }
+  fila.replaceChildren();
+  for (const c of cines) {
+    const b = el('button', null, c.nombre);
+    b.type = 'button';
+    b.addEventListener('click', () => {
+      contexto = { ...(contexto ?? {}), cinemaId: c.id };
+      consultar(c.nombre);
+    });
+    fila.append(b);
+  }
+  fila.append(el('span', 'nota', cines.length ? 'o escribe tu distrito' : 'escribe tu distrito o ciudad'));
 }
 
 function responder(r) {
