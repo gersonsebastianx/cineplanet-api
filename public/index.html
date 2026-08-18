@@ -688,8 +688,13 @@ async function pintarSugerencias() {
       lista = [];
     }
   }
-  // Sin historial propio ni ajeno, hay que sugerir algo para empezar.
-  if (!lista.length) lista = ['La Odisea mañana en la tarde en Salaverry', '¿Qué dan hoy en Trujillo?'];
+  // Lo que busca la gente manda, pero un solo botón se ve pobre: se completa
+  // con ejemplos hasta dos, sin repetir lo que ya está.
+  const PORDEFECTO = ['La Odisea mañana en la tarde en Salaverry', '¿Qué dan hoy en Trujillo?'];
+  for (const ej of PORDEFECTO) {
+    if (lista.length >= 2) break;
+    if (!lista.some((t) => t.toLowerCase() === ej.toLowerCase())) lista.push(ej);
+  }
   ejemplos.replaceChildren();
   for (const t of lista) {
     const b = el('button', null, t);
