@@ -6,6 +6,7 @@
 // bitácora; sólo había que leerlos de ahí.
 
 import { leerFilas } from '../src/bitacora.js';
+import { resolve } from '../src/resolve.js';
 
 // Columnas de la hoja.
 const SESION = 1;
@@ -51,14 +52,28 @@ export default async function handler(req, res) {
     cuenta.set(k, previo);
   }
 
-  const lista = [...cuenta.values()]
+  const candidatas = [...cuenta.values()]
     // Que la hayan escrito **personas distintas**. Con esto, lo que aparece son
     // búsquedas comunes y no la frase suelta de alguien, que sería mostrarle a
     // un desconocido lo que otro escribió.
     .filter((c) => c.sesiones.size >= 2)
     .sort((a, b) => b.sesiones.size - a.sesiones.size)
-    .slice(0, 3)
-    .map((c) => c.texto);
+    .slice(0, 8);
+
+  // Y que **funcione sola**. Muchas frases muy repetidas son respuestas de
+  // seguimiento —"para 1 personas", "trujillo"— que sin la conversación previa
+  // no llevan a ninguna parte. En vez de adivinar cuáles son, se prueban: sólo
+  // sirve de ejemplo la que por sí misma llega a una función.
+  const lista = [];
+  for (const c of candidatas) {
+    if (lista.length >= 3) break;
+    try {
+      const r = await resolve(c.texto);
+      if (r.estado === 'ok') lista.push(c.texto);
+    } catch {
+      /* si falla la comprobación, simplemente no se ofrece */
+    }
+  }
 
   cache = { hasta: Date.now() + 10 * 60 * 1000, lista };
   res.setHeader('cache-control', 'public, max-age=600');
