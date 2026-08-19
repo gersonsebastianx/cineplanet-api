@@ -93,6 +93,21 @@ async function loMasDado(movieList, cinemaId, today, limite = 6) {
   return con.sort((a, b) => b.funciones - a.funciones).slice(0, limite);
 }
 
+/**
+ * Las ciudades con más sedes, para ofrecerlas cuando hay que preguntar dónde.
+ * Salen de los datos: si Cineplanet abre en una ciudad nueva, aparece sola.
+ */
+function ciudadesPrincipales(cinemaList, limite = 5) {
+  const cuenta = new Map();
+  for (const c of cinemaList) {
+    if (c.city) cuenta.set(c.city, (cuenta.get(c.city) ?? 0) + 1);
+  }
+  return [...cuenta.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limite)
+    .map(([ciudad]) => ciudad);
+}
+
 /** Descarta funciones que ya empezaron si el día es hoy. */
 const stillSellable = (list, today) => {
   const now = nowMinutesLima();
@@ -461,8 +476,12 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
     if (intent.genero && !intent.cinema) {
       return {
-        estado: 'falta',
-        pregunta: `¿En qué cine buscas algo ${intent.genero.dice}?`,
+        estado: 'cartelera',
+        pregunta: `¿En qué ciudad o distrito buscas algo ${intent.genero.dice}?`,
+        // Sin opciones, quien respondía algo que no entendíamos —"cineplanet"—
+        // recibía la misma pregunta palabra por palabra y abandonaba. Con las
+        // ciudades a un toque siempre hay por dónde seguir.
+        opciones: ciudadesPrincipales(cinemaList).map((c) => ({ nombre: c })),
         intent,
         contexto: recordar(intent),
       };
@@ -730,6 +749,20 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   // respuesta pareciera sorda aunque fuera correcta.
   const noUsado = [];
   if (cedido.length) noUsado.push(`no hay funciones ${cedido.join(' ni ')}`);
+  // La franja pedida también se cede a veces, y callarlo deja la respuesta
+  // muda: alguien pidió Moana "más de noche" y recibió la misma función de las
+  // 15:40 sin explicación. Era cierto —es la única que hay— pero no se dijo.
+  const fueraDeFranja =
+    (intent.from != null || intent.to != null) &&
+    elegida &&
+    (elegida.minutes < (intent.from ?? 0) || elegida.minutes > (intent.to ?? 24 * 60));
+  if (fueraDeFranja) {
+    noUsado.push(
+      `no hay funciones ${intent.said?.time ?? 'en esa franja'}${
+        disponibles.length === 1 ? ', ésta es la única' : ''
+      }`,
+    );
+  }
   if (falloMapa) noUsado.push(falloMapa);
   if (sueltas) noUsado.push(`sólo quedan butacas sueltas, no ${asientos} juntas`);
   if (agotadas) noUsado.push(agotadas === 1 ? 'la anterior estaba agotada' : `${agotadas} funciones antes estaban agotadas`);

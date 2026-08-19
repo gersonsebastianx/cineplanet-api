@@ -453,3 +453,29 @@ test('«otro cine» pide cambiar de sede, no repite la misma', async () => {
     );
   }
 });
+
+test('ceder la franja horaria se dice, no se calla', async () => {
+  // Reportado por la bitácora: alguien pidió Moana "más de noche" y recibió la
+  // misma función de las 15:40. Era cierto —es la única que hay— pero callarlo
+  // hace que la respuesta parezca sorda.
+  const { resolve } = await import('../src/resolve.js');
+  const a = await resolve('moana mañana en cp san miguel');
+  if (a.estado !== 'ok') return;
+  const b = await resolve('mas de noche', { contexto: a.contexto });
+  if (b.funcion && b.funcion.hora < '19:00') {
+    assert.ok(
+      (b.noUsado ?? []).some((n) => /no hay funciones/.test(n)),
+      'si la función queda fuera de la franja pedida, hay que decirlo',
+    );
+  }
+});
+
+test('preguntar dónde siempre ofrece por dónde seguir', async () => {
+  // Reportado: se preguntaba "¿en qué cine buscas algo de terror?", la persona
+  // respondía "cineplanet" y recibía la misma pregunta palabra por palabra.
+  const { resolve } = await import('../src/resolve.js');
+  const a = await resolve('quiero ver una peli de terror, de preferencia de noche');
+  assert.ok((a.opciones ?? []).length > 0, 'la pregunta necesita opciones');
+  const b = await resolve('cineplanet', { contexto: a.contexto });
+  assert.ok((b.opciones ?? []).length > 0, 'y la segunda vez también');
+});
