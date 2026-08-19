@@ -218,14 +218,27 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   // anterior no son un distrito recién mencionado.
   if (!intent.cinema && intent.district && intent.districtCoords) {
     const cuantas = intent.lugarConSede ?? 0;
-    const cerca = nearest(cinemaList, intent.districtCoords, cuantas ? 4 : 3);
+    // Si ya sabemos qué quiere ver, sólo se ofrecen sedes donde **esa película**
+    // se da. Alguien pidió Toy Story, dijo "Lima", eligió CP Risso de nuestra
+    // propia lista y ahí no la daban: le ofrecimos una puerta cerrada y tuvo
+    // que volver a elegir.
+    let candidatas = cinemaList;
+    if (intent.movie) {
+      const con = stillSellable(await showtimes({ movie: intent.movie }), today);
+      const ids = new Set(con.map((f) => f.cinemaId));
+      const conLaPelicula = cinemaList.filter((c) => ids.has(c.id));
+      if (conLaPelicula.length) candidatas = conLaPelicula;
+    }
+    const cerca = nearest(candidatas, intent.districtCoords, cuantas ? 4 : 3);
     return {
       estado: 'elige-cine',
       // Decir "no hay Cineplanet en Lima" es falso 27 veces. Cuando la ciudad
       // sí tiene sedes, lo honesto es decir cuántas y ofrecer las del centro,
       // que es lo mejor que se puede saber de alguien que sólo dijo su ciudad.
       pregunta: cuantas
-        ? `En ${titulo(intent.district)} hay ${cuantas} ${cuantas === 1 ? 'cine' : 'cines'}. ¿Cuál te queda cerca?`
+        ? intent.movie
+          ? `${intent.movie.title} en ${titulo(intent.district)}. ¿Cuál te queda cerca?`
+          : `En ${titulo(intent.district)} hay ${cuantas} ${cuantas === 1 ? 'cine' : 'cines'}. ¿Cuál te queda cerca?`
         : `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
       opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: cuantas ? null : c.km })),
       intent,
