@@ -176,8 +176,45 @@ dice**. Lo que sigue sin entenderse se nombra en la respuesta.
 Odisea · CP Salaverry, como antes"— así que reutilizar algo equivocado deja de
 ser invisible.
 
-**Causa 4 — pendiente.** Es el refactor de `resolve()` y ahora hay pruebas que lo
-respaldan, que era la condición para hacerlo con red.
+**Causa 4 — en curso, por pasos.** Medido el 2026-08-19: `resolve()` tiene **703
+líneas, 31 puntos de salida y 60 condiciones**, y el orden de esas salidas
+codifica reglas que no están escritas en ninguna parte. Sólo ese día se le
+agregaron cuatro ramas nuevas, cada una colocada razonando qué debía ir antes
+que qué — razonamiento que vive en el orden de las líneas y en nadie más.
+
+Reescribirla de golpe se descartó por una razón medida, no por prudencia vaga:
+el corpus alcanzaba **cuatro de los siete estados posibles**, y no tocaba `ok`,
+`sin-cartelera` ni `error`. Es decir, la red no cubría el camino que termina en
+el mapa de butacas y el botón de compra, que es el que importa.
+
+**Paso 1 — hecho** (2026-08-19). `test/butacas.test.js`: 14 pruebas sobre planos
+fabricados, más una que recorre la conversación entera contra la cartelera del
+día. Para eso se separó `leerPlan()` de la llamada de red. Se verificó la red con
+seis mutaciones —quitar el espejo de columnas, la inversión de filas, la
+detección de sala agotada, el filtro de sillas de ruedas, el de bloques
+solapados, y desalinear las sugeridas del mapa— y las seis hicieron fallar una
+prueba.
+
+**Paso 2 — pendiente.** Hacer visible el orden **sin cambiarlo**: convertir la
+cadena de `if` en una lista de reglas con nombre y condición explícita, en el
+mismo orden que tienen hoy. Es mecánico y se puede verificar frase por frase
+contra el comportamiento actual. Da la mitad del beneficio con una fracción del
+riesgo.
+
+**Paso 3 — quizá nunca.** La separación completa entre "interpretar" y "decidir".
+Conviene decidir si hace falta *después* del paso 2, no antes.
+
+### Una lección aparte: las pruebas también caducan
+
+Dos veces en el mismo día se puso roja una prueba que nadie había tocado, porque
+la cartelera cambió: salió *Moana*, y *Shrek* dejó de darse en CP Ventanilla. Un
+build rojo por algo que no rompimos enseña a ignorar el rojo, que es peor que no
+tener pruebas.
+
+Regla: **ninguna prueba fija un título ni una sede a mano.** Los tipeos se
+fabrican sobre la cartelera del día; lo que necesite una sede la busca contra lo
+que haya; y lo que de verdad dependa de un título concreto se salta solo si ese
+título ya no está.
 
 ## En qué orden vale la pena atacarlo
 
