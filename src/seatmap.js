@@ -19,7 +19,18 @@ export class SalaAgotada extends Error {
 }
 
 export async function seatMap(cinemaId, sessionId) {
-  const plan = await getSeatPlan(cinemaId, sessionId);
+  return leerPlan(await getSeatPlan(cinemaId, sessionId), cinemaId, sessionId);
+}
+
+/**
+ * Convierte la respuesta cruda de Cineplanet en el mapa que usa la interfaz.
+ *
+ * Está separado de la llamada de red a propósito: es la parte que decide —qué
+ * es butaca y qué es pasillo, qué fila va delante, cuándo la sala está agotada—
+ * y es la que conviene poder probar con planos fabricados, sin depender de que
+ * hoy haya una función con asientos libres.
+ */
+export function leerPlan(plan, cinemaId, sessionId) {
   // Sin esto, una función agotada se veía igual que un fallo de red y la
   // interfaz ofrecía comprar butacas que no existen.
   if (plan.ResponseCode === '67' || /sold\s*out/i.test(plan.ErrorDescription ?? '')) {
