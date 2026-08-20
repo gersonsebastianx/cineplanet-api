@@ -237,13 +237,15 @@ test('una conversación llega hasta el enlace con butacas que existen', async ()
 
   // Las butacas que resaltamos deben existir en el mapa y estar libres: es el
   // error que ya cometimos una vez, sugerir G25 y G26 en una sala de 26.
-  const porId = new Map(card.mapa.filas.flatMap((f) => f.butacas).map((b) => [b.id, b]));
-  for (const sug of card.mapa.sugeridas ?? []) {
-    for (const id of sug.butacas ?? []) {
-      const butaca = porId.get(id);
-      assert.ok(butaca, `${id} no está en el mapa que mostramos`);
-      assert.ok(butaca.libre, `${id} se sugiere pero está ocupada`);
-    }
+  const porId = new Map(
+    card.mapa.filas.flatMap((f) => f.celdas.filter((c) => c?.id)).map((c) => [c.id, c]),
+  );
+  const sugeridas = (card.mapa.sugeridas ?? []).flatMap((s) => s.seats ?? []);
+  assert.ok(sugeridas.length > 0, 'una tarjeta con mapa tiene que sugerir butacas');
+  for (const id of sugeridas) {
+    const butaca = porId.get(id);
+    assert.ok(butaca, `${id} se resalta pero no está en el mapa que mostramos`);
+    assert.ok(butaca.libre, `${id} se sugiere pero está ocupada`);
   }
   assert.ok(card.mapa.libres <= card.mapa.total);
 });
