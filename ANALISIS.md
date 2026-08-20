@@ -215,6 +215,67 @@ invisible, hay que declararlo en el mismo commit.
 **Paso 3 — quizá nunca.** La separación completa entre "interpretar" y "decidir".
 Conviene decidir si hace falta *después* del paso 2, no antes.
 
+## Revisión de extremo a extremo (2026-08-19)
+
+Se revisó el camino completo —lo que se busca, lo que se responde y adónde
+lleva el botón— con el catálogo real, no con ejemplos.
+
+**Los enlaces están bien.** Se comprobaron las 2 090 parejas película–función
+del catálogo: ninguna sesión huérfana, ninguna que mezcle una función con otra
+sede, ningún título sin dirección web. En 60 tarjetas armadas de punta a punta
+se verificó que el enlace lleve a **esa** película, en **esa** sede, en la
+función que dice la tarjeta —fecha, hora y sala—, incluidos los enlaces de
+"otras funciones". Y se abrió uno en un navegador de verdad: carga la página de
+butacas correcta.
+
+Vale la pena saber cómo falla del otro lado, porque no avisa: con una dirección
+de película equivocada la página de Cineplanet queda **en blanco**, y con una
+función que ya no existe muestra el mapa vacío y el botón de comprar igual. En
+ambos casos responde 200: no hay forma de detectarlo desde afuera. Por eso lo
+que se cuida es el origen del enlace, no su respuesta.
+
+**Tres cosas estaban mal y se arreglaron.**
+
+1. **"¿Qué dan hoy?" de noche era un callejón.** Pasada la última función del
+   día, la pregunta más común de todas contestaba «¿Qué quieres ver?» — la
+   misma pregunta que la persona acababa de hacer. A las 23:12 le pasaba a **42
+   de las 43 sedes**. Ahora se cede en el mismo orden que en el resto de la
+   conversación —primero la hora, después el día— y se dice: «Hoy ya no quedan
+   funciones en CP Trujillo Centro, pero mañana sí:». El día ofrecido queda
+   recordado, así que pulsar un título lleva directo a la función.
+
+2. **Pulsar un botón volvía a pasar por el intérprete.** Los títulos se ofrecían
+   sólo como texto, así que dos películas que el intérprete no sabe separar
+   —"…Parte 1" y "…Parte 2"— devolvían «¿cuál de estas?» y pulsar la respuesta
+   repetía la pregunta, sin salida. Hoy las dos están como próximo estreno, así
+   que el bucle todavía no le tocó a nadie. Ahora cada opción viaja con su
+   identificador, como ya se hacía con las sedes.
+
+3. **Nada caducaba en memoria.** El proceso guardaba cada respuesta de
+   Cineplanet para siempre: en un servidor que vive horas, el mapa de butacas
+   de una función se congelaba —asientos ya vendidos se veían libres— y pasada
+   la medianoche la cartelera de "hoy" seguía siendo la de ayer. Ahora el
+   catálogo caduca a los diez minutos y las butacas a los cuarenta y cinco
+   segundos.
+
+**Además:** las llamadas a Cineplanet tienen plazo (ocho segundos) en vez de
+quedarse colgadas hasta que el hosting las mate; las peticiones simultáneas del
+mismo dato son una sola —el arranque en frío visitaba la portada dos veces—; y
+cuando se responde con un snapshot viejo porque Cineplanet no contesta, la
+tarjeta lo dice en vez de ofrecer un enlace que puede estar muerto.
+
+**Lo que se revisó y estaba bien:** los 43 nombres de sede y las 12 ciudades
+vuelven a entenderse cuando se ofrecen como botón; de 69 títulos, 66 igual —los
+tres que no ya no pueden trabarse, porque el botón lleva identificador—; el
+barrido completo (43 sedes × cartelera × pulsar un título) no produce bucles,
+callejones, respuestas inventadas ni tarjetas de otra sede.
+
+**Un dato del catálogo, no un error nuestro:** CP Trujillo Centro y CP
+Ventanilla publican hoy 8 y 6 funciones —dos películas cada una—, contra 23–110
+del resto. Cineplanet tampoco lista Trujillo entre sus ciudades con cartelera.
+No hay nada que arreglar de este lado; conviene saberlo antes de dudar de la
+búsqueda.
+
 ### Una lección aparte: las pruebas también caducan
 
 Dos veces en el mismo día se puso roja una prueba que nadie había tocado, porque

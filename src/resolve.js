@@ -5,6 +5,7 @@
 // la conversación sirva en vez de frustrar.
 
 import { movies, cinemas, showtimes, nearest } from './catalog.js';
+import { edadDelCatalogo } from './api.js';
 import { seatMap, bestBlocks, SalaAgotada } from './seatmap.js';
 import { parse, limaToday, generoPorNombre, tokens } from './parser.js';
 
@@ -911,6 +912,16 @@ async function caminoDeCompra(ctx) {
       `no hay funciones ${intent.said?.time ?? 'en esa franja'}${
         disponibles.length === 1 ? ', ésta es la única' : ''
       }`,
+    );
+  }
+  // Cuando Cineplanet no responde se contesta con el último snapshot. Sirve
+  // para seguir eligiendo, pero el enlace puede llevar a una página de compra
+  // vacía si esa función ya no existe: callarlo es mandar a alguien a una
+  // puerta cerrada sin avisar.
+  const edad = edadDelCatalogo();
+  if (edad != null && edad > 30 * 60_000) {
+    noUsado.push(
+      `Cineplanet no está respondiendo: esta cartelera es de hace ${Math.round(edad / 60_000)} minutos y puede haber cambiado`,
     );
   }
   if (falloMapa) noUsado.push(falloMapa);
