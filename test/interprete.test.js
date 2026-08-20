@@ -527,3 +527,31 @@ test('preguntar dónde siempre ofrece por dónde seguir', async () => {
   const b = await resolve('cineplanet', { contexto: a.contexto });
   assert.ok((b.opciones ?? []).length > 0, 'y la segunda vez también');
 });
+
+// Dos títulos que sólo se distinguen por un número —"…Parte 1" y "…Parte 2"—
+// quedaban empatados porque los números sueltos se descartaban antes de buscar
+// título. La respuesta era «¿cuál de estas?», y contestar escribiendo el título
+// devolvía la misma pregunta, para siempre.
+test('un número suelto distingue dos títulos que sólo se diferencian en él', () => {
+  const pares = ms.filter((m) => /\b(\d+)$/.test(m.title.trim()));
+  const conHermana = pares.find((m) =>
+    ms.some((o) => o.id !== m.id && o.title.replace(/\d+$/, '') === m.title.replace(/\d+$/, '')),
+  );
+  if (!conHermana) return; // hoy la cartelera no tiene un par así
+  const r = leer(conHermana.title);
+  assert.equal(r.movie?.id, conHermana.id, `«${conHermana.title}» → ${r.movie?.title ?? 'nada'}`);
+  assert.equal(r.movieConfianza, 'alta');
+});
+
+// Y el número que sí explica otra cosa sigue sin robarle el puesto al título:
+// el "5" de "a las 5" no es "Toy Story 5".
+test('una hora no se lee como el número de una saga', () => {
+  const r = leer('a las 5 en salaverry');
+  assert.equal(r.movie, null, `eligió ${r.movie?.title}`);
+  assert.equal(hm(r.from), '16:15');
+});
+
+test('cuántos van tampoco elige película', () => {
+  assert.equal(leer('somos 3').movie, null);
+  assert.equal(leer('3 entradas').movie, null);
+});

@@ -187,6 +187,50 @@ export const CIUDADES_SIN_SEDE = {
   jaen: [-5.7089, -78.8078],
 };
 
+/**
+ * Lugares de fuera del Perú que la gente nombra. Cineplanet no está sólo acá y
+ * la gente lo sabe: el 19 de agosto dos personas distintas preguntaron por
+ * Chile, y una se fue tras cinco turnos porque a «chile» y a «santiago» se les
+ * contestaba "no entendí" y se les volvía a pedir un distrito.
+ *
+ * Sólo se mira cuando no se reconoció ningún lugar del Perú, así que "Santiago
+ * de Surco" sigue siendo Lima.
+ */
+export const FUERA_DEL_PERU = {
+  chile: 'Chile',
+  // "Santiago" a secas también puede ser Santiago de Surco. Se entiende que
+  // hablan de un lugar, pero no se afirma cuál: el valor vacío hace que la
+  // respuesta no lo nombre.
+  santiago: null,
+  bolivia: 'Bolivia',
+  'la paz': 'La Paz',
+  ecuador: 'Ecuador',
+  quito: 'Quito',
+  guayaquil: 'Guayaquil',
+  colombia: 'Colombia',
+  bogota: 'Bogotá',
+  medellin: 'Medellín',
+  argentina: 'Argentina',
+  'buenos aires': 'Buenos Aires',
+  brasil: 'Brasil',
+  mexico: 'México',
+  venezuela: 'Venezuela',
+  uruguay: 'Uruguay',
+  paraguay: 'Paraguay',
+  panama: 'Panamá',
+  'estados unidos': 'Estados Unidos',
+  miami: 'Miami',
+  'nueva york': 'Nueva York',
+  espana: 'España',
+  madrid: 'Madrid',
+  barcelona: 'Barcelona',
+};
+
+// "¿para qué país funciona?" es una pregunta legítima y se contestaba con una
+// lista de películas, que es no escuchar.
+const PREGUNTA_PAIS =
+  /\b(que|cual|cuales|de\s+que)\s+pais\w*\b|\bpaises\b|\bfunciona\s+(en|para|solo)\b|\bsolo\s+(en\s+)?peru\b|\btambien\s+en\b/;
+
 // Cómo pide la gente un género frente a cómo lo escribe Cineplanet. "Para
 // niños" no es un género suyo: es clasificación APT más animación o familiar.
 /** Recupera un género por su nombre visible, para heredarlo entre turnos. */
@@ -730,9 +774,24 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
 
   // Lo ya consumido por el cine, la fecha o la hora no debería competir por ser
   // película: si no, el "5" de "a las 5" gana contra "Toy Story 5".
+  //
+  // Pero cuando no se entendió ninguna hora, fecha ni cantidad, ese número no
+  // lo consumió nadie y es lo único que distingue "…Parte 1" de "…Parte 2":
+  // tirarlo dejaba las dos empatadas, preguntando «¿cuál de estas?» y
+  // repitiendo la pregunta cada vez que se contestaba escribiendo el título.
+  const hayCantidad =
+    /\b\d+\s*(personas?|entradas?|boletos?|butacas?|asientos?)\b/.test(t) ||
+    /\b(somos|vamos|seremos|iremos|seriamos)\s+\d{1,2}\b/.test(t);
+  const numeroSuelto = date == null && from == null && to == null && !hayCantidad;
   const used = new Set(cinemaHit?.hits ?? []);
   const rest = tokens(text)
-    .filter((w) => !used.has(w) && !/^\d+$/.test(w) && !DAYS.includes(w) && !MONTHS.includes(w))
+    .filter(
+      (w) =>
+        !used.has(w) &&
+        (numeroSuelto || !/^\d+$/.test(w)) &&
+        !DAYS.includes(w) &&
+        !MONTHS.includes(w),
+    )
     .join(' ');
   // Una sola palabra genérica no debería elegir película: se exige que cubra
   // una parte real del título.
@@ -787,6 +846,18 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     cinemaHit = otra?.item ? otra : null;
   }
 
+  // Un lugar de fuera del Perú, sólo si no se reconoció ninguno de acá: el
+  // distrito manda, y una palabra que ya explica el título tampoco cuenta
+  // ("Chile 76" sería una película, no un país).
+  const delTitulo = movieHit?.item ? new Set(tokens(movieHit.item.title)) : new Set();
+  const lugarAjeno =
+    !cinemaHit && !district && !ciudadSinSede && !ciudadConSede
+      ? (Object.keys(FUERA_DEL_PERU)
+          .filter((lugar) => new RegExp(`\\b${lugar}\\b`).test(t) && !delTitulo.has(lugar))
+          .sort((a, b) => b.length - a.length)[0] ?? null)
+      : null;
+  const preguntaPais = PREGUNTA_PAIS.test(t);
+
   // Cuántos van casi nunca viene como número. "Iré solo" o "somos 3" decían lo
   // mismo que "para 1 persona" y se ignoraban, así que seguía sugiriendo dos.
   const t2 = norm(text);
@@ -816,6 +887,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(district ? tokens(district) : []),
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
     ...tokens(dichoGenero),
+    ...(lugarAjeno ? tokens(lugarAjeno) : []),
+    ...(preguntaPais ? tokens(PREGUNTA_PAIS.exec(t)?.[0] ?? '') : []),
     ...tokens(formato ? (formato.pide.exec(norm(text))?.[0] ?? '') : ''),
     ...tokens(idioma ? (idioma.pide.exec(norm(text))?.[0] ?? '') : ''),
     // "somos 3" y "voy solo" dicen cuántos van: no son un título desconocido.
@@ -848,6 +921,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
         norm(text),
       ),
     fuera: FUERA.find((f) => f.pide.test(norm(text)))?.tema ?? null,
+    // Acá sólo vive la cartelera peruana. Decirlo es lo único honesto, y es
+    // mejor que pedir por tercera vez un distrito que la persona no tiene.
+    otroPais: lugarAjeno ? FUERA_DEL_PERU[lugarAjeno] : null,
+    fueraDelPeru: !!lugarAjeno,
+    preguntaPais,
     // Nombró un centro comercial que no está en los datos de Cineplanet. No se
     // puede afirmar si hay sede ahí o no, así que se pregunta por el distrito
     // en vez de inventar una respuesta en cualquiera de los dos sentidos.

@@ -276,6 +276,41 @@ del resto. Cineplanet tampoco lista Trujillo entre sus ciudades con cartelera.
 No hay nada que arreglar de este lado; conviene saberlo antes de dudar de la
 búsqueda.
 
+## Lo que trajo la bitácora (2026-08-19)
+
+Cinco conversaciones en un día. Cuatro llegaron a una función; una se fue
+después de cinco turnos sin ver ninguna. Ese es el caso que enseña:
+
+    la odisea          → falta   «La Odisea está en 43 cines. ¿En qué distrito estás?»
+    chile              → falta   «No entendí «chile». ¿En qué distrito vas al cine?»
+    era                → falta   «¿Qué quieres ver? Dime el nombre de la película.»
+    se puede en chile  → falta   «No entendí «puede chile». ¿En qué distrito…?»
+    santiago           → falta   «No entendí «santiago». ¿En qué distrito…?»
+
+Dos fallas distintas, las dos de la misma familia —no escuchar—:
+
+**La película se perdía al primer tropiezo.** En el turno 2 la web ya había
+olvidado La Odisea, así que el turno 3 preguntó lo que la persona contestó en el
+turno 1. La regla que responde a las palabras sin explicar soltaba la película
+siempre; ahora la suelta **sólo si lo que no entendió se parece a un título**,
+que es cuando de verdad están nombrando otra. Si no, se conserva y se dice:
+«¿En qué distrito vas al cine? Te digo dónde dan La Odisea».
+
+**Preguntar por otro país no se entendía.** Cineplanet no está sólo en el Perú y
+la gente lo sabe: ese mismo día otra persona escribió «¿para qué país de
+cineplanet funciona?» y recibió una lista de películas. Ahora se reconoce el
+lugar de afuera y la pregunta de cobertura, y se contesta lo único honesto:
+«Sólo tengo la cartelera de Cineplanet Perú». Cuando el lugar es ambiguo
+—"Santiago" también es Santiago de Surco— no se nombra: se dice de qué cartelera
+disponemos y se pregunta por el Perú, sin afirmar qué quiso decir.
+
+**Y un bucle que apareció al revisar.** La pareja "…Parte 1" / "…Parte 2" ya
+tiene funciones, y escribiendo el título completo devolvía «¿cuál de estas?»
+para siempre: los números sueltos se descartaban antes de buscar título, para
+que el "5" de "a las 5" no ganara contra "Toy Story 5". Ahora el número se
+descarta **sólo si alguien más lo usó** —una hora, una fecha, una cantidad—; si
+no lo usó nadie, es lo único que distingue una parte de la otra.
+
 ### Una lección aparte: las pruebas también caducan
 
 Dos veces en el mismo día se puso roja una prueba que nadie había tocado, porque

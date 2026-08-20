@@ -90,6 +90,13 @@ const NIVELES = {
     'otro cine',
     'quiero dos entradas para la odisea mañana',
     'en cineplanet trujillo',
+    // Del 19 de agosto: dos personas distintas preguntaron por otro país el
+    // mismo día. Una se fue después de cinco turnos sin ver una sola función.
+    'chile',
+    'se puede en chile',
+    'santiago',
+    'espera, para qué pais de cineplanet funciona?',
+    'era',
   ],
 };
 

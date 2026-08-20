@@ -10,6 +10,7 @@ test('las reglas se evalúan en el orden acordado', () => {
   assert.deepEqual(ORDEN_DE_REGLAS, [
     'fecha-imposible',
     'fuera-de-lo-que-hacemos',
+    'solo-cineplanet-peru',
     'centro-comercial-sin-sede',
     'pide-otro-cine',
     'saludo',

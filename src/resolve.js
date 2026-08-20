@@ -174,6 +174,24 @@ const REGLAS = [
   },
 
   {
+    // Cineplanet no está sólo en el Perú y la gente lo sabe: el 19 de agosto dos
+    // personas preguntaron por Chile el mismo día, y a una se le contestó "no
+    // entendí «chile»" y se le volvió a pedir un distrito, tres veces. Preguntar
+    // por el país es una pregunta legítima; lo honesto es decir qué cartelera
+    // tenemos. Y no se olvida lo que ya se sabía: la película sobrevive.
+    nombre: 'solo-cineplanet-peru',
+    cuando: ({ fresco }) => fresco.fueraDelPeru || fresco.preguntaPais,
+    responde: ({ fresco, intent }) => ({
+      estado: 'falta',
+      pregunta: fresco.otroPais
+        ? `Sólo tengo la cartelera de Cineplanet Perú, así que no puedo ver funciones en ${fresco.otroPais}. ¿En qué distrito o ciudad del Perú vas al cine?`
+        : 'Acá sólo está la cartelera de Cineplanet Perú. ¿En qué distrito o ciudad del Perú vas al cine?',
+      intent,
+      contexto: recordar(intent),
+    }),
+  },
+
+  {
     nombre: 'centro-comercial-sin-sede',
     cuando: ({ fresco, intent }) => !!fresco.centroComercial && !intent.cinema,
     responde: ({ fresco, intent }) => ({
@@ -382,17 +400,28 @@ const REGLAS = [
       !fresco.movie && fresco.sobrantes.length > 0 && (parecidaATitulo(fresco) || !entendioAlgo(fresco)),
     responde: async ({ fresco, intent, movieList, today }) => {
       const dicho = fresco.sobrantes.join(' ');
-      const noEntendi = parecidaATitulo(fresco)
+      const parecida = parecidaATitulo(fresco);
+      const noEntendi = parecida
         ? `Lo siento, «${dicho}» no está en cartelera`
         : `No entendí «${dicho}»`;
+      // Soltar la película sólo si lo no entendido **se parece a un título**:
+      // ahí están nombrando otra y heredar la anterior sería contestar por una
+      // que nadie pidió. Una palabra cualquiera no es motivo para olvidar lo
+      // que ya se sabía: alguien escribió "la odisea", después "chile", y a
+      // partir de ahí la conversación había perdido la película. Cinco turnos,
+      // ninguna función.
+      const recuerdo = parecida ? { ...intent, movie: null } : intent;
       // Sin saber dónde va a ir, listar cartelera es listar la de otra punta del
       // país: qué se da depende del distrito.
       if (!intent.cinema) {
         return {
           estado: 'falta',
-          pregunta: `${noEntendi}. ¿En qué distrito vas al cine? Te digo qué hay ahí.`,
+          // Y se nombra lo que sí se entendió, para que se vea que no se perdió.
+          pregunta: `${noEntendi}. ¿En qué distrito vas al cine? Te digo ${
+            recuerdo.movie ? `dónde dan ${recuerdo.movie.title}` : 'qué hay ahí'
+          }.`,
           intent,
-          contexto: recordar({ ...intent, movie: null }),
+          contexto: recordar(recuerdo),
         };
       }
       const enCartelera = await loMasDado(movieList, intent.cinema.id, today);
@@ -405,14 +434,14 @@ const REGLAS = [
             : `No entendí «${dicho}». Esto hay${donde}:`,
           opciones: enCartelera.map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
           intent,
-          contexto: recordar({ ...intent, movie: null }),
+          contexto: recordar(recuerdo),
         };
       }
       return {
         estado: 'falta',
         pregunta: `Lo siento, «${dicho}» no está en cartelera. ¿Cuál quieres ver?`,
         intent,
-        contexto: recordar({ ...intent, movie: null }),
+        contexto: recordar(recuerdo),
       };
     },
   },
