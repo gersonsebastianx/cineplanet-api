@@ -115,187 +115,215 @@ const stillSellable = (list, today) => {
 };
 
 /**
- * Resuelve una frase contra la cartelera real.
- * @returns {Promise<object>} respuesta con `estado` y lo necesario para mostrarla
+ * Las funciones de la película en todo el país, calculadas una sola vez.
+ * Varias reglas la necesitan y la cartelera no cambia dentro de una respuesta.
  */
-export async function resolve(text, { today = limaToday(), contexto = null } = {}) {
-  const [movieList, cinemaList] = await Promise.all([movies(), cinemas()]);
-  const fresco = parse(text, { movies: movieList, cinemas: cinemaList, today });
+function funcionesEnElPais(ctx) {
+  ctx.cache.pais ??= showtimes({ movie: ctx.intent.movie }).then((l) => stillSellable(l, ctx.today));
+  return ctx.cache.pais;
+}
 
-  // Una conversación acumula: "La Odisea" y después "en Barranco" son una sola
-  // intención. Lo nuevo pisa lo viejo; lo que no se mencionó, se hereda.
-  const previo = contexto
-    ? {
-        movie: movieList.find((m) => m.id === contexto.movieId) ?? null,
-        cinema: cinemaList.find((c) => c.id === contexto.cinemaId) ?? null,
-      }
-    : null;
-  const intent = contexto
-    ? {
-        ...fresco,
-        movie: fresco.movie ?? previo.movie,
-        // Nombrar un distrito nuevo descarta la sede anterior: cambió de idea.
-        cinema: fresco.cinema ?? (fresco.district ? null : previo.cinema),
-        districtCoords: fresco.districtCoords ?? contexto.coords ?? null,
-        date: fresco.date ?? contexto.date ?? null,
-        from: fresco.from ?? contexto.from ?? null,
-        to: fresco.to ?? contexto.to ?? null,
-        seats: fresco.seats ?? contexto.seats ?? null,
-        genero: fresco.genero ?? generoPorNombre(contexto.genero) ?? null,
-        formato: fresco.formato ?? contexto.formato ?? null,
-        idioma: fresco.idioma ?? contexto.idioma ?? null,
-      }
-    : fresco;
+/** Las funciones de esa película en esa sede, también una sola vez. */
+function funcionesEnLaSede(ctx) {
+  ctx.cache.sede ??= showtimes({
+    movie: ctx.intent.movie,
+    cinemaIds: [ctx.intent.cinema.id],
+  }).then((l) => stillSellable(l, ctx.today));
+  return ctx.cache.sede;
+}
 
-  // Lo que no se pudo usar se dice; ignorarlo en silencio es lo que hace que la
-  // respuesta parezca sorda.
-  if (intent.imposible) {
-    return {
+/**
+ * El orden de esta lista **es** una regla del producto: la primera que aplica
+ * contesta. Antes ese orden vivía en una cadena de `if` de setecientas líneas,
+ * donde cada rama nueva se colocaba razonando qué debía ir antes que qué — y
+ * ese razonamiento no quedaba escrito en ninguna parte.
+ *
+ * `cuando` dice cuándo aplica; `responde` arma la respuesta. Una regla puede
+ * devolver `null`: miró, no le sirvió, y cede el turno a la siguiente.
+ *
+ * Si ninguna aplica, se sigue al camino de compra: hay película y hay sede, y
+ * lo que queda es elegir función y butacas.
+ */
+const REGLAS = [
+  {
+    // Lo que no se pudo usar se dice; ignorarlo en silencio es lo que hace que
+    // la respuesta parezca sorda.
+    nombre: 'fecha-imposible',
+    cuando: ({ intent }) => !!intent.imposible,
+    responde: ({ intent }) => ({
       estado: 'falta',
       pregunta: `${frase(intent.imposible)}. ¿Para cuándo lo busco?`,
       intent,
       contexto: recordar(intent),
-    };
-  }
+    }),
+  },
 
-  // Preguntas que no hacemos y saludos: se responden antes que nada, porque si
-  // caen en la maquinaria de títulos terminan en «hola» no está en cartelera.
-  if (fresco.fuera) {
-    return {
+  {
+    // Preguntas que no hacemos y saludos: se responden antes que nada, porque si
+    // caen en la maquinaria de títulos terminan en «hola» no está en cartelera.
+    nombre: 'fuera-de-lo-que-hacemos',
+    cuando: ({ fresco }) => !!fresco.fuera,
+    responde: ({ fresco, intent }) => ({
       estado: 'falta',
       // Sin "de + el": queda "de el estacionamiento".
       pregunta: `No sé nada sobre ${fresco.fuera}: acá sólo busco funciones y butacas, y el pago lo haces en Cineplanet. ¿Qué quieres ver?`,
       intent,
       contexto: recordar(intent),
-    };
-  }
-  if (fresco.centroComercial && !intent.cinema) {
-    return {
+    }),
+  },
+
+  {
+    nombre: 'centro-comercial-sin-sede',
+    cuando: ({ fresco, intent }) => !!fresco.centroComercial && !intent.cinema,
+    responde: ({ fresco, intent }) => ({
       estado: 'falta',
       pregunta: `Cineplanet no publica en qué centros comerciales está, así que no puedo confirmarte «${fresco.centroComercial}». ¿En qué distrito queda? Con eso te digo la sede más cercana.`,
       intent,
       contexto: recordar(intent),
-    };
-  }
-  // Pidió cambiar de sede: se suelta la que veníamos usando y se ofrecen las de
-  // alrededor. Antes esto caía en el camino normal, heredaba el mismo cine y
-  // devolvía la misma respuesta, como si no hubiera escuchado.
-  if (fresco.otroCine && !fresco.cinema && !fresco.district) {
-    const donde = intent.districtCoords ?? previo?.cinema ?? intent.cinema;
-    // Igual que al elegir por distrito: si ya sabemos qué quiere ver, sólo se
-    // ofrecen sedes donde esa película se da. Ofrecer una donde no la dan es
-    // mandar a la persona a elegir dos veces.
-    let candidatas = cinemaList;
-    if (intent.movie) {
-      const con = stillSellable(await showtimes({ movie: intent.movie }), today);
-      const ids = new Set(con.map((f) => f.cinemaId));
-      const conLaPelicula = cinemaList.filter((c) => ids.has(c.id));
-      if (conLaPelicula.length) candidatas = conLaPelicula;
-    }
-    const cerca = donde
-      ? nearest(candidatas, donde, 4).filter(
-          (c) => c.id !== previo?.cinema?.id && c.id !== intent.cinema?.id,
-        )
-      : [];
-    if (cerca.length) {
+    }),
+  },
+
+  {
+    // Pidió cambiar de sede: se suelta la que veníamos usando y se ofrecen las de
+    // alrededor. Antes esto caía en el camino normal, heredaba el mismo cine y
+    // devolvía la misma respuesta, como si no hubiera escuchado.
+    nombre: 'pide-otro-cine',
+    cuando: ({ fresco }) => !!fresco.otroCine && !fresco.cinema && !fresco.district,
+    responde: async ({ intent, previo, cinemaList, today }) => {
+      const donde = intent.districtCoords ?? previo?.cinema ?? intent.cinema;
+      // Igual que al elegir por distrito: si ya sabemos qué quiere ver, sólo se
+      // ofrecen sedes donde esa película se da. Ofrecer una donde no la dan es
+      // mandar a la persona a elegir dos veces.
+      let candidatas = cinemaList;
+      if (intent.movie) {
+        const con = stillSellable(await showtimes({ movie: intent.movie }), today);
+        const ids = new Set(con.map((f) => f.cinemaId));
+        const conLaPelicula = cinemaList.filter((c) => ids.has(c.id));
+        if (conLaPelicula.length) candidatas = conLaPelicula;
+      }
+      const cerca = donde
+        ? nearest(candidatas, donde, 4).filter(
+            (c) => c.id !== previo?.cinema?.id && c.id !== intent.cinema?.id,
+          )
+        : [];
+      if (cerca.length) {
+        return {
+          estado: 'elige-cine',
+          pregunta: '¿A cuál prefieres ir?',
+          opciones: cerca.slice(0, 3).map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+          intent,
+          // Se suelta la sede pero no dónde está la persona: eso sigue sirviendo.
+          contexto: recordar({ ...intent, cinema: null }),
+        };
+      }
       return {
-        estado: 'elige-cine',
-        pregunta: '¿A cuál prefieres ir?',
-        opciones: cerca.slice(0, 3).map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+        estado: 'falta',
+        pregunta: '¿En qué distrito o ciudad? Te digo qué cines hay ahí.',
         intent,
-        // Se suelta la sede pero no dónde está la persona: eso sigue sirviendo.
         contexto: recordar({ ...intent, cinema: null }),
       };
-    }
-    return {
-      estado: 'falta',
-      pregunta: '¿En qué distrito o ciudad? Te digo qué cines hay ahí.',
-      intent,
-      contexto: recordar({ ...intent, cinema: null }),
-    };
-  }
+    },
+  },
 
-  if (fresco.saludo) {
-    const abre = fresco.saludo === 'saludo' ? 'Hola. ' : '';
-    return {
-      estado: 'falta',
-      pregunta: intent.cinema
-        ? `${abre}Dime qué quieres ver y te busco función en ${intent.cinema.name}.`
-        : `${abre}Dime la película, el cine y cuándo — por ejemplo «La Odisea hoy en la tarde en Salaverry».`,
-      intent,
-      contexto: recordar(intent),
-    };
-  }
+  {
+    nombre: 'saludo',
+    cuando: ({ fresco }) => !!fresco.saludo,
+    responde: ({ fresco, intent }) => {
+      const abre = fresco.saludo === 'saludo' ? 'Hola. ' : '';
+      return {
+        estado: 'falta',
+        pregunta: intent.cinema
+          ? `${abre}Dime qué quieres ver y te busco función en ${intent.cinema.name}.`
+          : `${abre}Dime la película, el cine y cuándo — por ejemplo «La Odisea hoy en la tarde en Salaverry».`,
+        intent,
+        contexto: recordar(intent),
+      };
+    },
+  },
 
-  // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.
-  // Sólo si lo nombró en este mensaje: unas coordenadas heredadas del turno
-  // anterior no son un distrito recién mencionado.
-  if (!intent.cinema && intent.district && intent.districtCoords) {
-    const cuantas = intent.lugarConSede ?? 0;
-    // Si ya sabemos qué quiere ver, sólo se ofrecen sedes donde **esa película**
-    // se da. Alguien pidió Toy Story, dijo "Lima", eligió CP Risso de nuestra
-    // propia lista y ahí no la daban: le ofrecimos una puerta cerrada y tuvo
-    // que volver a elegir.
-    let candidatas = cinemaList;
-    if (intent.movie) {
-      const con = stillSellable(await showtimes({ movie: intent.movie }), today);
-      const ids = new Set(con.map((f) => f.cinemaId));
-      const conLaPelicula = cinemaList.filter((c) => ids.has(c.id));
-      if (conLaPelicula.length) candidatas = conLaPelicula;
-    }
-    const cerca = nearest(candidatas, intent.districtCoords, cuantas ? 4 : 3);
-    return {
-      estado: 'elige-cine',
-      // Decir "no hay Cineplanet en Lima" es falso 27 veces. Cuando la ciudad
-      // sí tiene sedes, lo honesto es decir cuántas y ofrecer las del centro,
-      // que es lo mejor que se puede saber de alguien que sólo dijo su ciudad.
-      pregunta: cuantas
-        ? intent.movie
-          ? `${intent.movie.title} en ${titulo(intent.district)}. ¿Cuál te queda cerca?`
-          : `En ${titulo(intent.district)} hay ${cuantas} ${cuantas === 1 ? 'cine' : 'cines'}. ¿Cuál te queda cerca?`
-        : `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
-      opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: cuantas ? null : c.km })),
-      intent,
-      contexto: recordar(intent),
-    };
-  }
+  {
+    // Un distrito sin sede propia no es un callejón sin salida: hay uno cerca.
+    // Sólo si lo nombró en este mensaje: unas coordenadas heredadas del turno
+    // anterior no son un distrito recién mencionado.
+    nombre: 'distrito-sin-sede-propia',
+    cuando: ({ intent }) => !intent.cinema && !!intent.district && !!intent.districtCoords,
+    responde: async ({ intent, cinemaList, today }) => {
+      const cuantas = intent.lugarConSede ?? 0;
+      // Si ya sabemos qué quiere ver, sólo se ofrecen sedes donde **esa película**
+      // se da. Alguien pidió Toy Story, dijo "Lima", eligió CP Risso de nuestra
+      // propia lista y ahí no la daban: le ofrecimos una puerta cerrada y tuvo
+      // que volver a elegir.
+      let candidatas = cinemaList;
+      if (intent.movie) {
+        const con = stillSellable(await showtimes({ movie: intent.movie }), today);
+        const ids = new Set(con.map((f) => f.cinemaId));
+        const conLaPelicula = cinemaList.filter((c) => ids.has(c.id));
+        if (conLaPelicula.length) candidatas = conLaPelicula;
+      }
+      const cerca = nearest(candidatas, intent.districtCoords, cuantas ? 4 : 3);
+      return {
+        estado: 'elige-cine',
+        // Decir "no hay Cineplanet en Lima" es falso 27 veces. Cuando la ciudad
+        // sí tiene sedes, lo honesto es decir cuántas y ofrecer las del centro,
+        // que es lo mejor que se puede saber de alguien que sólo dijo su ciudad.
+        pregunta: cuantas
+          ? intent.movie
+            ? `${intent.movie.title} en ${titulo(intent.district)}. ¿Cuál te queda cerca?`
+            : `En ${titulo(intent.district)} hay ${cuantas} ${cuantas === 1 ? 'cine' : 'cines'}. ¿Cuál te queda cerca?`
+          : `No hay Cineplanet en ${titulo(intent.district)}. Los más cercanos:`,
+        opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: cuantas ? null : c.km })),
+        intent,
+        contexto: recordar(intent),
+      };
+    },
+  },
 
-  // Una sede parecida es más peligrosa que una película parecida: mandar a
-  // alguien de Puente Piedra a Piura son mil kilómetros, y la respuesta se ve
-  // igual de segura que si fuera correcta.
-  if (fresco.cinema && fresco.cinemaConfianza === 'media') {
-    return {
+  {
+    // Una sede parecida es más peligrosa que una película parecida: mandar a
+    // alguien de Puente Piedra a Piura son mil kilómetros, y la respuesta se ve
+    // igual de segura que si fuera correcta.
+    nombre: 'sede-solo-parecida',
+    cuando: ({ fresco }) => !!fresco.cinema && fresco.cinemaConfianza === 'media',
+    responde: ({ fresco, intent }) => ({
       estado: 'confirmar',
       pregunta: `¿Te refieres a ${fresco.cinema.name}?`,
       opciones: [{ id: fresco.cinema.id, nombre: fresco.cinema.name, ciudad: fresco.cinema.city }],
       intent,
       // Se olvida la sede dudosa: si no era esa, heredarla repetiría el error.
       contexto: recordar({ ...intent, cinema: null, districtCoords: null }),
-    };
-  }
+    }),
+  },
 
-  // Sólo hay parecido, no certeza. Antes esto se resolvía en silencio y de ahí
-  // salieron las respuestas seguras y equivocadas: preguntar cuesta un toque.
-  if (fresco.movie && fresco.movieConfianza === 'media') {
-    const opciones = fresco.movieAlternativas.slice(0, 3).map((m) => ({ nombre: m.title }));
-    return {
-      estado: 'confirmar',
-      pregunta:
-        opciones.length > 1
-          ? '¿Cuál de estas quieres ver?'
-          : `¿Te refieres a ${fresco.movie.title}?`,
-      opciones,
-      intent,
-      contexto: recordar({ ...intent, movie: null }),
-    };
-  }
+  {
+    // Sólo hay parecido, no certeza. Antes esto se resolvía en silencio y de ahí
+    // salieron las respuestas seguras y equivocadas: preguntar cuesta un toque.
+    nombre: 'pelicula-solo-parecida',
+    cuando: ({ fresco }) => !!fresco.movie && fresco.movieConfianza === 'media',
+    responde: ({ fresco, intent }) => {
+      const opciones = fresco.movieAlternativas.slice(0, 3).map((m) => ({ nombre: m.title }));
+      return {
+        estado: 'confirmar',
+        pregunta:
+          opciones.length > 1
+            ? '¿Cuál de estas quieres ver?'
+            : `¿Te refieres a ${fresco.movie.title}?`,
+        opciones,
+        intent,
+        contexto: recordar({ ...intent, movie: null }),
+      };
+    },
+  },
 
-  // Pidió una recomendación, no una película: tratar "recomiendes" como título
-  // y contestar que no está en cartelera es entender lo contrario de lo dicho.
-  if (fresco.pideRecomendacion && !fresco.movie) {
-    const cine = intent.cinema;
-    const lista = await loMasDado(movieList, cine?.id, today, 6);
-    if (lista.length) {
+  {
+    // Pidió una recomendación, no una película: tratar "recomiendes" como título
+    // y contestar que no está en cartelera es entender lo contrario de lo dicho.
+    nombre: 'pide-recomendacion',
+    cuando: ({ fresco }) => !!fresco.pideRecomendacion && !fresco.movie,
+    responde: async ({ intent, movieList, today }) => {
+      const cine = intent.cinema;
+      const lista = await loMasDado(movieList, cine?.id, today, 6);
+      // Sin nada que recomendar, esta regla no tiene respuesta: cede el turno.
+      if (!lista.length) return null;
       return {
         estado: 'cartelera',
         pregunta: cine
@@ -305,338 +333,387 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
         intent,
         contexto: recordar({ ...intent, movie: null }),
       };
-    }
-  }
+    },
+  },
 
-  // Hay un parecido que no alcanzó para elegir. Antes se descartaba y se
-  // respondía "no está en cartelera", tirando la única pista útil.
-  if (!fresco.movie && fresco.movieSugerencias?.length) {
-    const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
-    const uno = fresco.movieSugerencias.length === 1;
-    return {
-      estado: 'confirmar',
-      pregunta: uno
-        ? `¿Te refieres a ${fresco.movieSugerencias[0].title}?`
-        : `¿Cuál de estas quieres ver${donde}?`,
-      opciones: fresco.movieSugerencias.map((m) => ({ nombre: m.title })),
-      intent,
-      contexto: recordar({ ...intent, movie: null }),
-    };
-  }
-
-  // Quedaron palabras sin explicar. Durante mucho tiempo esto se respondía
-  // afirmando que eran una película inexistente —«hola» no está en cartelera—,
-  // y esa sola regla producía un tercio de las respuestas rotas.
-  //
-  // Que algo no se entienda no autoriza a decir qué era. Sólo se afirma "no
-  // está en cartelera" cuando hay razón para creer que estaban nombrando una:
-  // que se parezca a algún título. Si no, se dice lo único cierto —no se
-  // entendió— y se ofrece por dónde seguir.
-  //
-  // Y si del mensaje sí se entendió algo —el día, la hora, el género, la sede,
-  // cuántos van— una palabra suelta no puede tumbar la respuesta entera: "a las
-  // 19:30" entendía la hora y contestaba «19:30» no está en cartelera. Se sigue
-  // adelante y lo no usado se nombra al final, donde no estorba. Esta regla
-  // reemplaza a la lista de palabras que nunca terminaba de crecer.
-  const parecidaATitulo = fresco.movieSugerencias?.length > 0;
-  const entendioAlgo =
-    fresco.date != null ||
-    fresco.from != null ||
-    fresco.genero != null ||
-    fresco.formato != null ||
-    fresco.idioma != null ||
-    fresco.seats != null ||
-    fresco.cinema != null ||
-    fresco.district != null;
-
-  if (!fresco.movie && fresco.sobrantes.length && (parecidaATitulo || !entendioAlgo)) {
-    const dicho = fresco.sobrantes.join(' ');
-    const noEntendi = parecidaATitulo
-      ? `Lo siento, «${dicho}» no está en cartelera`
-      : `No entendí «${dicho}»`;
-    // Sin saber dónde va a ir, listar cartelera es listar la de otra punta del
-    // país: qué se da depende del distrito.
-    if (!intent.cinema) {
+  {
+    // Hay un parecido que no alcanzó para elegir. Antes se descartaba y se
+    // respondía "no está en cartelera", tirando la única pista útil.
+    nombre: 'parecido-que-no-alcanzo',
+    cuando: ({ fresco }) => !fresco.movie && fresco.movieSugerencias?.length > 0,
+    responde: ({ fresco, intent }) => {
+      const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
+      const uno = fresco.movieSugerencias.length === 1;
       return {
-        estado: 'falta',
-        pregunta: `${noEntendi}. ¿En qué distrito vas al cine? Te digo qué hay ahí.`,
+        estado: 'confirmar',
+        pregunta: uno
+          ? `¿Te refieres a ${fresco.movieSugerencias[0].title}?`
+          : `¿Cuál de estas quieres ver${donde}?`,
+        opciones: fresco.movieSugerencias.map((m) => ({ nombre: m.title })),
         intent,
         contexto: recordar({ ...intent, movie: null }),
       };
-    }
-    const enCartelera = await loMasDado(movieList, intent.cinema.id, today);
-    const donde = ` en ${intent.cinema.name}`;
-    if (enCartelera.length) {
-      return {
-        estado: 'cartelera',
-        pregunta: parecidaATitulo
-          ? `Lo siento, «${dicho}» no está en cartelera${donde}. Estas sí:`
-          : `No entendí «${dicho}». Esto hay${donde}:`,
-        opciones: enCartelera.map((m) => ({ nombre: m.titulo })),
-        intent,
-        contexto: recordar({ ...intent, movie: null }),
-      };
-    }
-    return {
-      estado: 'falta',
-      pregunta: `Lo siento, «${dicho}» no está en cartelera. ¿Cuál quieres ver?`,
-      intent,
-      contexto: recordar({ ...intent, movie: null }),
-    };
-  }
+    },
+  },
 
-  if (!intent.movie) {
-    // "¿qué hay hoy en Salaverry?" es de lo más común que se pregunta, y la
-    // cartelera está a un paso: listarla es mejor que pedir un título que
-    // todavía no eligió.
-    if (intent.cinema) {
-      const dia = intent.date ?? today;
-      // Un género pedido filtra la cartelera; "para niños" además exige APT,
-      // porque una animación +14 no sirve para lo que están pidiendo.
-      const candidatas = intent.genero
-        ? movieList.filter(
-            (m) =>
-              intent.genero.generos.includes(m.genre) &&
-              (!intent.genero.apt || m.rating === 'APT'),
-          )
-        : movieList;
-      const enCartelera = [];
-      for (const m of candidatas) {
-        const f = stillSellable(
-          await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
-          today,
-        );
-        const delDia = f.filter((s) => s.date === dia);
-        // Si pidió una franja, la cartelera es la de esa franja. Antes la hora
-        // se entendía y después se tiraba: alguien preguntaba "de 6pm en
-        // adelante" y recibía la lista del día entero, funciones ya pasadas
-        // incluidas.
-        const enFranja =
-          intent.from != null || intent.to != null
-            ? delDia.filter(
-                (s) =>
-                  s.minutes >= (intent.from ?? 0) && s.minutes <= (intent.to ?? 24 * 60),
-              )
-            : delDia;
-        if (enFranja.length)
-          enCartelera.push({ titulo: m.title, funciones: enFranja.length, rating: m.rating });
+  {
+    // Quedaron palabras sin explicar. Durante mucho tiempo esto se respondía
+    // afirmando que eran una película inexistente —«hola» no está en cartelera—,
+    // y esa sola regla producía un tercio de las respuestas rotas.
+    //
+    // Que algo no se entienda no autoriza a decir qué era. Sólo se afirma "no
+    // está en cartelera" cuando hay razón para creer que estaban nombrando una:
+    // que se parezca a algún título. Si no, se dice lo único cierto —no se
+    // entendió— y se ofrece por dónde seguir.
+    //
+    // Y si del mensaje sí se entendió algo —el día, la hora, el género, la sede,
+    // cuántos van— una palabra suelta no puede tumbar la respuesta entera: "a las
+    // 19:30" entendía la hora y contestaba «19:30» no está en cartelera. Se sigue
+    // adelante y lo no usado se nombra al final, donde no estorba. Esta regla
+    // reemplaza a la lista de palabras que nunca terminaba de crecer.
+    //
+    // Nota: para llegar hasta acá el parecido a un título ya fue descartado por
+    // `parecido-que-no-alcanzo`, salvo cuando sí hay película elegida.
+    nombre: 'palabras-sin-explicar',
+    cuando: ({ fresco }) =>
+      !fresco.movie && fresco.sobrantes.length > 0 && (parecidaATitulo(fresco) || !entendioAlgo(fresco)),
+    responde: async ({ fresco, intent, movieList, today }) => {
+      const dicho = fresco.sobrantes.join(' ');
+      const noEntendi = parecidaATitulo(fresco)
+        ? `Lo siento, «${dicho}» no está en cartelera`
+        : `No entendí «${dicho}»`;
+      // Sin saber dónde va a ir, listar cartelera es listar la de otra punta del
+      // país: qué se da depende del distrito.
+      if (!intent.cinema) {
+        return {
+          estado: 'falta',
+          pregunta: `${noEntendi}. ¿En qué distrito vas al cine? Te digo qué hay ahí.`,
+          intent,
+          contexto: recordar({ ...intent, movie: null }),
+        };
       }
+      const enCartelera = await loMasDado(movieList, intent.cinema.id, today);
+      const donde = ` en ${intent.cinema.name}`;
       if (enCartelera.length) {
-        enCartelera.sort((a, b) => b.funciones - a.funciones);
-        const cuando = dia === today ? 'hoy' : sayDate(dia, today);
-        // Repetir la franja pedida es lo que deja ver si se entendió bien.
-        const franja = intent.said?.time ? ` ${intent.said.time}` : '';
         return {
           estado: 'cartelera',
-          pregunta: intent.genero
-            ? `${frase(intent.genero.dice)} en ${intent.cinema.name} ${cuando}${franja}:`
-            : `En ${intent.cinema.name} ${cuando}${franja} dan:`,
-          opciones: enCartelera.slice(0, 8).map((m) => ({ nombre: m.titulo, nota: m.rating })),
+          pregunta: parecidaATitulo(fresco)
+            ? `Lo siento, «${dicho}» no está en cartelera${donde}. Estas sí:`
+            : `No entendí «${dicho}». Esto hay${donde}:`,
+          opciones: enCartelera.map((m) => ({ nombre: m.titulo })),
           intent,
-          contexto: recordar(intent),
+          contexto: recordar({ ...intent, movie: null }),
         };
       }
-      if (intent.genero) {
-        // Nunca dejar a alguien sin por dónde seguir. Además, el género que
-        // publica Cineplanet es grueso y a veces desconcierta —"El Final de la
-        // Calle Oak" figura como Acción— así que filtrar y callarse esconde
-        // justo lo que la persona buscaba. Se dice que no hay, y se muestra
-        // lo que sí.
-        // Primero, si lo pedido existe otro día: es la respuesta que se busca
-        // —"hoy no, mañana sí"— y no obliga a preguntar de nuevo.
-        const otroDia = [];
-        for (const m of candidatas) {
-          const f = stillSellable(
-            await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
-            today,
-          );
-          const proxima = f.filter((s) => s.date > dia).sort((a, b) => a.date.localeCompare(b.date))[0];
-          if (proxima) otroDia.push({ titulo: m.title, dia: proxima.date });
-        }
-        if (otroDia.length) {
-          const cuandoOtro = sayDate(
-            otroDia.map((m) => m.dia).sort()[0],
-            today,
-          );
-          return {
-            estado: 'cartelera',
-            pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}, pero ${cuandoOtro} sí:`,
-            opciones: otroDia.slice(0, 6).map((m) => ({ nombre: m.titulo })),
-            intent,
-            contexto: recordar(intent),
-          };
-        }
-        // Si tampoco hay otro día, se ofrece lo que sí se da **ese mismo día**:
-        // decir "no hay nada para niños hoy" y listar películas de mañana es
-        // contradecirse en la misma respuesta.
-        const resto = [];
-        for (const m of movieList) {
-          const f = stillSellable(
-            await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
-            today,
-          );
-          if (f.some((s) => s.date === dia)) resto.push(m.title);
-        }
-        if (resto.length) {
-          return {
-            estado: 'cartelera',
-            pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
-              intent.said?.time ? ` ${intent.said.time}` : ''
-            }. Esto sí:`,
-            opciones: resto.slice(0, 6).map((t) => ({ nombre: t })),
-            intent,
-            contexto: recordar({ ...intent, genero: null }),
-          };
-        }
-        return {
-          estado: 'sin-cartelera',
-          // Sin nombrar la franja, "no hay nada de terror hoy" es más rotundo de
-          // lo que sabemos: puede haber, sólo que no a la hora pedida.
-          mensaje: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
-            intent.said?.time ? ` ${intent.said.time}` : ''
-          }.`,
-          intent,
-          contexto: recordar(intent),
-        };
-      }
-    }
-    const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
-    if (intent.genero && !intent.cinema) {
+      return {
+        estado: 'falta',
+        pregunta: `Lo siento, «${dicho}» no está en cartelera. ¿Cuál quieres ver?`,
+        intent,
+        contexto: recordar({ ...intent, movie: null }),
+      };
+    },
+  },
+
+  {
+    // No hay película: o se lista la cartelera de la sede, o se pregunta cuál.
+    nombre: 'sin-pelicula',
+    cuando: ({ intent }) => !intent.movie,
+    responde: async (ctx) => (await carteleraDeLaSede(ctx)) ?? preguntarQuePelicula(ctx),
+  },
+
+  {
+    // Antes de preguntar por la sede: si no tiene funciones en ningún lado, pedir
+    // un cine es hacerle perder el tiempo. Puede ser un estreno futuro o una que
+    // ya terminó su temporada, y son mensajes distintos.
+    nombre: 'sin-funciones-en-el-pais',
+    cuando: async (ctx) => !!ctx.intent.movie && !(await funcionesEnElPais(ctx)).length,
+    responde: async ({ intent, movieList, today }) => {
+      const parecidas = await mismoGenero(intent.movie, movieList, null, today);
+      const alternativas = parecidas.length ? parecidas : await loMasDado(movieList, null, today);
+      const genero = intent.movie.genre?.toLowerCase();
       return {
         estado: 'cartelera',
-        pregunta: `¿En qué ciudad o distrito buscas algo ${intent.genero.dice}?`,
-        // Sin opciones, quien respondía algo que no entendíamos —"cineplanet"—
-        // recibía la misma pregunta palabra por palabra y abandonaba. Con las
-        // ciudades a un toque siempre hay por dónde seguir.
-        opciones: ciudadesPrincipales(cinemaList).map((c) => ({ nombre: c })),
+        pregunta: intent.movie.comingSoon
+          ? `${intent.movie.title} todavía no se estrena.${
+              parecidas.length ? ` Mientras tanto, de ${genero} sí hay:` : ' Esto sí está en cartelera:'
+            }`
+          : `Lo siento, ${intent.movie.title} ya no está en cartelera.${
+              parecidas.length ? ` De ${genero} sí hay:` : ' Esto sí:'
+            }`,
+        opciones: alternativas.map((m) => ({ nombre: m.titulo })),
         intent,
-        contexto: recordar(intent),
+        contexto: recordar({ ...intent, movie: null }),
       };
-    }
-    return {
-      estado: 'falta',
-      pregunta: `¿Qué quieres ver${donde}? Dime el nombre de la película.`,
-      intent,
-      contexto: recordar(intent),
-    };
-  }
+    },
+  },
 
-  // Antes de preguntar por la sede: si no tiene funciones en ningún lado, pedir
-  // un cine es hacerle perder el tiempo. Puede ser un estreno futuro o una que
-  // ya terminó su temporada, y son mensajes distintos.
-  const enTodoElPais = stillSellable(await showtimes({ movie: intent.movie }), today);
-  if (!enTodoElPais.length) {
-    const parecidas = await mismoGenero(intent.movie, movieList, null, today);
-    const alternativas = parecidas.length ? parecidas : await loMasDado(movieList, null, today);
-    const genero = intent.movie.genre?.toLowerCase();
-    return {
-      estado: 'cartelera',
-      pregunta: intent.movie.comingSoon
-        ? `${intent.movie.title} todavía no se estrena.${
-            parecidas.length ? ` Mientras tanto, de ${genero} sí hay:` : ' Esto sí está en cartelera:'
-          }`
-        : `Lo siento, ${intent.movie.title} ya no está en cartelera.${
-            parecidas.length ? ` De ${genero} sí hay:` : ' Esto sí:'
-          }`,
-      opciones: alternativas.map((m) => ({ nombre: m.titulo })),
-      intent,
-      contexto: recordar({ ...intent, movie: null }),
-    };
-  }
-
-  // Varias sedes empatadas: preguntar es más rápido que mandar a la equivocada.
-  if (intent.cinemaOptions) {
-    return {
+  {
+    // Varias sedes empatadas: preguntar es más rápido que mandar a la equivocada.
+    nombre: 'varias-sedes-empatadas',
+    cuando: ({ intent }) => !!intent.cinemaOptions,
+    responde: ({ intent }) => ({
       estado: 'elige-cine',
       pregunta: '¿Cuál de estos?',
       opciones: intent.cinemaOptions.slice(0, 5).map((c) => ({ id: c.id, nombre: c.name, ciudad: c.city })),
       intent,
       contexto: recordar(intent),
-    };
-  }
+    }),
+  },
 
-  // Nombró un lugar que no reconocemos: decirlo es más honesto que listar sedes
-  // de otra ciudad como si fueran la respuesta.
-  if (!intent.cinema && intent.lugarDesconocido) {
-    return {
+  {
+    // Nombró un lugar que no reconocemos: decirlo es más honesto que listar sedes
+    // de otra ciudad como si fueran la respuesta.
+    nombre: 'lugar-desconocido',
+    cuando: ({ intent }) => !intent.cinema && !!intent.lugarDesconocido,
+    responde: ({ intent }) => ({
       estado: 'falta',
       pregunta: `No ubico "${intent.lugarDesconocido}". ¿En qué distrito o ciudad del Perú?`,
       intent,
       contexto: recordar(intent),
-    };
-  }
+    }),
+  },
 
-  if (!intent.cinema) {
-    // Si ya se sabe la película, preguntar "¿en qué cine?" a secas obliga a
-    // adivinar dónde la dan. Mejor mostrar las sedes que sí la tienen.
-    const conFuncion = stillSellable(await showtimes({ movie: intent.movie }), today);
-    const sedes = [...new Set(conFuncion.map((s) => s.cinemaId))]
-      .map((id) => cinemaList.find((c) => c.id === id))
-      .filter(Boolean);
-    if (sedes.length) {
-      // Sin saber dónde está la persona, ofrecer sedes es adivinar: la más
-      // popular puede quedarle a dos horas. Mejor preguntar una vez y usarlo
-      // para el resto de la conversación.
-      if (!intent.districtCoords) {
+  {
+    nombre: 'falta-la-sede',
+    cuando: ({ intent }) => !intent.cinema,
+    responde: async ({ intent, cinemaList, today }) => {
+      // Si ya se sabe la película, preguntar "¿en qué cine?" a secas obliga a
+      // adivinar dónde la dan. Mejor mostrar las sedes que sí la tienen.
+      const conFuncion = stillSellable(await showtimes({ movie: intent.movie }), today);
+      const sedes = [...new Set(conFuncion.map((s) => s.cinemaId))]
+        .map((id) => cinemaList.find((c) => c.id === id))
+        .filter(Boolean);
+      if (sedes.length) {
+        // Sin saber dónde está la persona, ofrecer sedes es adivinar: la más
+        // popular puede quedarle a dos horas. Mejor preguntar una vez y usarlo
+        // para el resto de la conversación.
+        if (!intent.districtCoords) {
+          return {
+            estado: 'falta',
+            pregunta: `${intent.movie.title} está en ${sedes.length} ${
+              sedes.length === 1 ? 'cine' : 'cines'
+            }. ¿En qué distrito o provincia estás?`,
+            intent,
+            contexto: recordar(intent),
+          };
+        }
+        const orden = nearest(sedes, intent.districtCoords, 4);
         return {
-          estado: 'falta',
-          pregunta: `${intent.movie.title} está en ${sedes.length} ${
-            sedes.length === 1 ? 'cine' : 'cines'
-          }. ¿En qué distrito o provincia estás?`,
+          estado: 'elige-cine',
+          pregunta: `${intent.movie.title} está en:`,
+          opciones: orden.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
           intent,
           contexto: recordar(intent),
         };
       }
-      const orden = nearest(sedes, intent.districtCoords, 4);
+      return { estado: 'falta', pregunta: MISSING.cinema, intent, contexto: recordar(intent) };
+    },
+  },
+
+  {
+    // Hay película y hay sede, pero ahí no la dan.
+    nombre: 'no-la-dan-en-esa-sede',
+    cuando: async (ctx) => !!ctx.intent.cinema && !(await funcionesEnLaSede(ctx)).length,
+    responde: async (ctx) => {
+      const { intent, cinemaList } = ctx;
+      // Decir "no la dan acá" y callarse es un callejón sin salida, teniendo la
+      // lista de dónde sí la dan a un paso. La pregunta siguiente siempre es
+      // "¿y dónde entonces?", así que se responde antes de que la hagan.
+      const enTodoElPais = await funcionesEnElPais(ctx);
+      const sedes = [...new Set(enTodoElPais.map((s) => s.cinemaId))]
+        .map((id) => cinemaList.find((c) => c.id === id))
+        .filter(Boolean);
+      const cerca = sedes.length ? nearest(sedes, intent.cinema, 3) : [];
+
+      if (cerca.length) {
+        return {
+          estado: 'elige-cine',
+          pregunta: `${intent.movie.title} no la dan en ${intent.cinema.name}. Sí en:`,
+          opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+          intent,
+          // Se descarta la sede elegida pero no dónde está la persona: esa sede
+          // era justamente la pista de su ubicación.
+          contexto: recordar({
+            ...intent,
+            cinema: null,
+            districtCoords: intent.districtCoords ?? { lat: intent.cinema.lat, lon: intent.cinema.lon },
+          }),
+        };
+      }
+      // Inalcanzable en la práctica: si no tuviera funciones en ningún lado se
+      // habría respondido más arriba. Queda por si la cartelera cambia entre
+      // ambas consultas.
       return {
-        estado: 'elige-cine',
-        pregunta: `${intent.movie.title} está en:`,
-        opciones: orden.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+        estado: 'sin-cartelera',
+        mensaje: `${intent.movie.title} ya no tiene funciones.`,
         intent,
         contexto: recordar(intent),
       };
-    }
-    return { estado: 'falta', pregunta: MISSING.cinema, intent, contexto: recordar(intent) };
+    },
+  },
+];
+
+/** Hay algo que se parece a un título, aunque no alcance para elegirlo. */
+const parecidaATitulo = (fresco) => fresco.movieSugerencias?.length > 0;
+
+/** Del mensaje se entendió algo más que la palabra suelta que sobró. */
+const entendioAlgo = (fresco) =>
+  fresco.date != null ||
+  fresco.from != null ||
+  fresco.genero != null ||
+  fresco.formato != null ||
+  fresco.idioma != null ||
+  fresco.seats != null ||
+  fresco.cinema != null ||
+  fresco.district != null;
+
+/**
+ * "¿qué hay hoy en Salaverry?" es de lo más común que se pregunta, y la
+ * cartelera está a un paso: listarla es mejor que pedir un título que todavía
+ * no eligió. Devuelve `null` si no hay sede o si no queda nada que listar.
+ */
+async function carteleraDeLaSede({ intent, movieList, today }) {
+  if (!intent.cinema) return null;
+  const dia = intent.date ?? today;
+  // Un género pedido filtra la cartelera; "para niños" además exige APT,
+  // porque una animación +14 no sirve para lo que están pidiendo.
+  const candidatas = intent.genero
+    ? movieList.filter(
+        (m) =>
+          intent.genero.generos.includes(m.genre) &&
+          (!intent.genero.apt || m.rating === 'APT'),
+      )
+    : movieList;
+  const enCartelera = [];
+  for (const m of candidatas) {
+    const f = stillSellable(
+      await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
+      today,
+    );
+    const delDia = f.filter((s) => s.date === dia);
+    // Si pidió una franja, la cartelera es la de esa franja. Antes la hora
+    // se entendía y después se tiraba: alguien preguntaba "de 6pm en
+    // adelante" y recibía la lista del día entero, funciones ya pasadas
+    // incluidas.
+    const enFranja =
+      intent.from != null || intent.to != null
+        ? delDia.filter(
+            (s) =>
+              s.minutes >= (intent.from ?? 0) && s.minutes <= (intent.to ?? 24 * 60),
+          )
+        : delDia;
+    if (enFranja.length)
+      enCartelera.push({ titulo: m.title, funciones: enFranja.length, rating: m.rating });
   }
-
-  const all = stillSellable(
-    await showtimes({ movie: intent.movie, cinemaIds: [intent.cinema.id] }),
-    today,
-  );
-  if (!all.length) {
-    // Decir "no la dan acá" y callarse es un callejón sin salida, teniendo la
-    // lista de dónde sí la dan a un paso. La pregunta siguiente siempre es
-    // "¿y dónde entonces?", así que se responde antes de que la hagan.
-    const sedes = [...new Set(enTodoElPais.map((s) => s.cinemaId))]
-      .map((id) => cinemaList.find((c) => c.id === id))
-      .filter(Boolean);
-    const cerca = sedes.length ? nearest(sedes, intent.cinema, 3) : [];
-
-    if (cerca.length) {
-      return {
-        estado: 'elige-cine',
-        pregunta: `${intent.movie.title} no la dan en ${intent.cinema.name}. Sí en:`,
-        opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
-        intent,
-        // Se descarta la sede elegida pero no dónde está la persona: esa sede
-        // era justamente la pista de su ubicación.
-        contexto: recordar({
-          ...intent,
-          cinema: null,
-          districtCoords: intent.districtCoords ?? { lat: intent.cinema.lat, lon: intent.cinema.lon },
-        }),
-      };
-    }
-    // Inalcanzable en la práctica: si no tuviera funciones en ningún lado se
-    // habría respondido más arriba. Queda por si la cartelera cambia entre
-    // ambas consultas.
+  if (enCartelera.length) {
+    enCartelera.sort((a, b) => b.funciones - a.funciones);
+    const cuando = dia === today ? 'hoy' : sayDate(dia, today);
+    // Repetir la franja pedida es lo que deja ver si se entendió bien.
+    const franja = intent.said?.time ? ` ${intent.said.time}` : '';
     return {
-      estado: 'sin-cartelera',
-      mensaje: `${intent.movie.title} ya no tiene funciones.`,
+      estado: 'cartelera',
+      pregunta: intent.genero
+        ? `${frase(intent.genero.dice)} en ${intent.cinema.name} ${cuando}${franja}:`
+        : `En ${intent.cinema.name} ${cuando}${franja} dan:`,
+      opciones: enCartelera.slice(0, 8).map((m) => ({ nombre: m.titulo, nota: m.rating })),
       intent,
       contexto: recordar(intent),
     };
   }
+  if (!intent.genero) return null;
+  // Nunca dejar a alguien sin por dónde seguir. Además, el género que
+  // publica Cineplanet es grueso y a veces desconcierta —"El Final de la
+  // Calle Oak" figura como Acción— así que filtrar y callarse esconde
+  // justo lo que la persona buscaba. Se dice que no hay, y se muestra
+  // lo que sí.
+  // Primero, si lo pedido existe otro día: es la respuesta que se busca
+  // —"hoy no, mañana sí"— y no obliga a preguntar de nuevo.
+  const otroDia = [];
+  for (const m of candidatas) {
+    const f = stillSellable(
+      await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
+      today,
+    );
+    const proxima = f.filter((s) => s.date > dia).sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (proxima) otroDia.push({ titulo: m.title, dia: proxima.date });
+  }
+  if (otroDia.length) {
+    const cuandoOtro = sayDate(
+      otroDia.map((m) => m.dia).sort()[0],
+      today,
+    );
+    return {
+      estado: 'cartelera',
+      pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}, pero ${cuandoOtro} sí:`,
+      opciones: otroDia.slice(0, 6).map((m) => ({ nombre: m.titulo })),
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+  // Si tampoco hay otro día, se ofrece lo que sí se da **ese mismo día**:
+  // decir "no hay nada para niños hoy" y listar películas de mañana es
+  // contradecirse en la misma respuesta.
+  const resto = [];
+  for (const m of movieList) {
+    const f = stillSellable(
+      await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
+      today,
+    );
+    if (f.some((s) => s.date === dia)) resto.push(m.title);
+  }
+  if (resto.length) {
+    return {
+      estado: 'cartelera',
+      pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
+        intent.said?.time ? ` ${intent.said.time}` : ''
+      }. Esto sí:`,
+      opciones: resto.slice(0, 6).map((t) => ({ nombre: t })),
+      intent,
+      contexto: recordar({ ...intent, genero: null }),
+    };
+  }
+  return {
+    estado: 'sin-cartelera',
+    // Sin nombrar la franja, "no hay nada de terror hoy" es más rotundo de
+    // lo que sabemos: puede haber, sólo que no a la hora pedida.
+    mensaje: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
+      intent.said?.time ? ` ${intent.said.time}` : ''
+    }.`,
+    intent,
+    contexto: recordar(intent),
+  };
+}
+
+/** Sin película y sin cartelera que mostrar: se pregunta cuál. */
+function preguntarQuePelicula({ intent, cinemaList }) {
+  const donde = intent.cinema ? ` en ${intent.cinema.name}` : '';
+  if (intent.genero && !intent.cinema) {
+    return {
+      estado: 'cartelera',
+      pregunta: `¿En qué ciudad o distrito buscas algo ${intent.genero.dice}?`,
+      // Sin opciones, quien respondía algo que no entendíamos —"cineplanet"—
+      // recibía la misma pregunta palabra por palabra y abandonaba. Con las
+      // ciudades a un toque siempre hay por dónde seguir.
+      opciones: ciudadesPrincipales(cinemaList).map((c) => ({ nombre: c })),
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+  return {
+    estado: 'falta',
+    pregunta: `¿Qué quieres ver${donde}? Dime el nombre de la película.`,
+    intent,
+    contexto: recordar(intent),
+  };
+}
+
+/**
+ * Hay película, hay sede y hay funciones: elegir cuál, mirar el mapa de butacas
+ * y armar la respuesta con el botón de compra.
+ */
+async function caminoDeCompra(ctx) {
+  const { fresco, intent, contexto, today } = ctx;
+  const all = await funcionesEnLaSede(ctx);
 
   // Formato e idioma son preferencias duras mientras existan funciones que las
   // cumplan; si no, se ceden y se dice, igual que con la hora.
@@ -835,3 +912,52 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
     mapa,
   };
 }
+
+/**
+ * Resuelve una frase contra la cartelera real.
+ * @returns {Promise<object>} respuesta con `estado` y lo necesario para mostrarla
+ */
+export async function resolve(text, { today = limaToday(), contexto = null } = {}) {
+  const [movieList, cinemaList] = await Promise.all([movies(), cinemas()]);
+  const fresco = parse(text, { movies: movieList, cinemas: cinemaList, today });
+  // Una conversación acumula: "La Odisea" y después "en Barranco" son una sola
+  // intención. Lo nuevo pisa lo viejo; lo que no se mencionó, se hereda.
+  const previo = contexto
+    ? {
+        movie: movieList.find((m) => m.id === contexto.movieId) ?? null,
+        cinema: cinemaList.find((c) => c.id === contexto.cinemaId) ?? null,
+      }
+    : null;
+  const intent = contexto
+    ? {
+        ...fresco,
+        movie: fresco.movie ?? previo.movie,
+        // Nombrar un distrito nuevo descarta la sede anterior: cambió de idea.
+        cinema: fresco.cinema ?? (fresco.district ? null : previo.cinema),
+        districtCoords: fresco.districtCoords ?? contexto.coords ?? null,
+        date: fresco.date ?? contexto.date ?? null,
+        from: fresco.from ?? contexto.from ?? null,
+        to: fresco.to ?? contexto.to ?? null,
+        seats: fresco.seats ?? contexto.seats ?? null,
+        genero: fresco.genero ?? generoPorNombre(contexto.genero) ?? null,
+        formato: fresco.formato ?? contexto.formato ?? null,
+        idioma: fresco.idioma ?? contexto.idioma ?? null,
+      }
+    : fresco;
+
+  const ctx = { today, contexto, movieList, cinemaList, fresco, previo, intent, cache: {} };
+
+  for (const regla of REGLAS) {
+    if (!(await regla.cuando(ctx))) continue;
+    const respuesta = await regla.responde(ctx);
+    if (respuesta) return respuesta;
+  }
+
+  return caminoDeCompra(ctx);
+}
+
+/**
+ * El orden, en un solo lugar y verificable. Una prueba lo fija, así que
+ * reordenar deja de ser un cambio invisible: hay que decirlo en el mismo commit.
+ */
+export const ORDEN_DE_REGLAS = REGLAS.map((r) => r.nombre);

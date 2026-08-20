@@ -195,11 +195,22 @@ detección de sala agotada, el filtro de sillas de ruedas, el de bloques
 solapados, y desalinear las sugeridas del mapa— y las seis hicieron fallar una
 prueba.
 
-**Paso 2 — pendiente.** Hacer visible el orden **sin cambiarlo**: convertir la
-cadena de `if` en una lista de reglas con nombre y condición explícita, en el
-mismo orden que tienen hoy. Es mecánico y se puede verificar frase por frase
-contra el comportamiento actual. Da la mitad del beneficio con una fracción del
-riesgo.
+**Paso 2 — hecho** (2026-08-19). El orden quedó visible **sin cambiarlo**: la
+cadena de `if` es ahora una lista de **17 reglas** con nombre y condición
+explícita (`fecha-imposible`, `pide-otro-cine`, `palabras-sin-explicar`…), en el
+mismo orden que tenían. Lo que quedaba después —elegir función, mirar butacas,
+armar el botón de compra— salió a `caminoDeCompra()`, y los dos bloques largos
+que colgaban de una condición son funciones con nombre (`carteleraDeLaSede()`,
+`preguntarQuePelicula()`).
+
+Se verificó frase por frase: 128 casos —el corpus entero más ocho conversaciones
+encadenadas— corridos contra la versión anterior y la nueva, **cero
+diferencias**; y el arnés se probó primero contra sí mismo (cero) y después
+contra una versión con dos reglas intercambiadas, que dio siete. Es decir,
+detecta lo que debía detectar. Las 102 pruebas siguen verdes.
+
+`ORDEN_DE_REGLAS` se exporta y una prueba lo fija: reordenar deja de ser
+invisible, hay que declararlo en el mismo commit.
 
 **Paso 3 — quizá nunca.** La separación completa entre "interpretar" y "decidir".
 Conviene decidir si hace falta *después* del paso 2, no antes.
