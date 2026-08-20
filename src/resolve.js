@@ -182,7 +182,21 @@ export async function resolve(text, { today = limaToday(), contexto = null } = {
   // devolvía la misma respuesta, como si no hubiera escuchado.
   if (fresco.otroCine && !fresco.cinema && !fresco.district) {
     const donde = intent.districtCoords ?? previo?.cinema ?? intent.cinema;
-    const cerca = donde ? nearest(cinemaList, donde, 4).filter((c) => c.id !== previo?.cinema?.id) : [];
+    // Igual que al elegir por distrito: si ya sabemos qué quiere ver, sólo se
+    // ofrecen sedes donde esa película se da. Ofrecer una donde no la dan es
+    // mandar a la persona a elegir dos veces.
+    let candidatas = cinemaList;
+    if (intent.movie) {
+      const con = stillSellable(await showtimes({ movie: intent.movie }), today);
+      const ids = new Set(con.map((f) => f.cinemaId));
+      const conLaPelicula = cinemaList.filter((c) => ids.has(c.id));
+      if (conLaPelicula.length) candidatas = conLaPelicula;
+    }
+    const cerca = donde
+      ? nearest(candidatas, donde, 4).filter(
+          (c) => c.id !== previo?.cinema?.id && c.id !== intent.cinema?.id,
+        )
+      : [];
     if (cerca.length) {
       return {
         estado: 'elige-cine',

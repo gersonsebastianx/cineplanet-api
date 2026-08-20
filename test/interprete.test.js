@@ -476,15 +476,28 @@ test('el intercambio no abre la puerta a cualquier parecido', () => {
 test('«otro cine» pide cambiar de sede, no repite la misma', async () => {
   // Reportado: se escribía "otro cine" y volvía la misma respuesta, como si no
   // hubiera escuchado. La frase no era ni un lugar ni un título.
+  // La sede base se busca contra la cartelera de hoy: fijarla a mano hacía
+  // fallar la prueba el día que esa película dejaba de darse ahí.
   const { resolve } = await import('../src/resolve.js');
-  const a = await resolve('shrek hoy en cp ventanilla');
+  let a = null;
+  for (const sede of cs.slice(0, 6)) {
+    const lista = await resolve(`que dan hoy en ${sede.name}`);
+    if (lista.estado !== 'cartelera' || !lista.opciones?.length) continue;
+    const r = await resolve(lista.opciones[0].nombre, { contexto: lista.contexto });
+    if (r.estado === 'ok') {
+      a = { respuesta: r, sede: r.pedido.cine };
+      break;
+    }
+  }
+  if (!a) return; // sin funciones ahora mismo
+
   for (const f of ['otro cine', 'en otra sede', 'cambiar de cine']) {
-    const b = await resolve(f, { contexto: a.contexto });
+    const b = await resolve(f, { contexto: a.respuesta.contexto });
     assert.equal(b.estado, 'elige-cine', f);
     assert.ok(b.opciones.length > 0, f);
     assert.ok(
-      b.opciones.every((o) => o.nombre !== 'CP Ventanilla'),
-      'no puede ofrecer la sede que se quiere dejar',
+      b.opciones.every((o) => o.nombre !== a.sede),
+      `ofreció ${a.sede}, que es justo la que se quiere dejar`,
     );
   }
 });
