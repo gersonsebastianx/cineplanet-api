@@ -67,3 +67,29 @@ test('un parecido a otro título sí suelta la película anterior', async () => 
   }
   assert.notEqual(segundo.contexto.movieId, enCartelera.id);
 });
+
+// Preguntar dónde está la persona es la pregunta más repetida de la bitácora
+// —14 de 36 turnos atascados en una semana— y era la única sin botones: había
+// que escribir. Todas las demás ofrecen por dónde seguir.
+test('preguntar dónde siempre ofrece ciudades a un toque', async () => {
+  for (const frase of [enCartelera.title, 'que peliculas hay?', 'quiero ir al cine']) {
+    const r = await resolve(frase);
+    if (r.estado === 'ok' || r.estado === 'cartelera') continue; // ya llegó más lejos
+    assert.ok(r.opciones?.length, `«${frase}» pregunta sin ofrecer nada: ${r.pregunta}`);
+  }
+});
+
+// Y esos botones tienen que llevar a algún lado: pulsando ciudad y sede se
+// llega a la función, sin escribir una palabra más.
+test('de la película a la función en dos toques', async (t) => {
+  const primero = await resolve(enCartelera.title);
+  if (!primero.opciones?.length) return t.skip('esa película ya resolvió sede sola');
+  const ciudad = await resolve(primero.opciones[0].nombre, { contexto: primero.contexto });
+  assert.ok(ciudad.opciones?.length, `la ciudad no ofreció sedes: ${ciudad.pregunta}`);
+  const sede = ciudad.opciones[0];
+  const final = await resolve(sede.nombre, {
+    contexto: ciudad.contexto,
+    elegido: sede.id ? { cineId: sede.id } : null,
+  });
+  assert.ok(['ok', 'cartelera'].includes(final.estado), `quedó en ${final.estado}: ${final.pregunta}`);
+});

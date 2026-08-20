@@ -520,11 +520,18 @@ const REGLAS = [
         // popular puede quedarle a dos horas. Mejor preguntar una vez y usarlo
         // para el resto de la conversación.
         if (!intent.districtCoords) {
+          // Con las ciudades a un toque. Preguntar "¿en qué distrito estás?" a
+          // secas es la fricción más repetida de la bitácora —14 de 36 turnos
+          // atascados en una semana—: todas las demás preguntas ofrecen por
+          // dónde seguir y ésta obligaba a escribir. Las ciudades salen de las
+          // sedes que **sí** tienen la película.
+          const ciudades = ciudadesPrincipales(sedes, 4);
           return {
-            estado: 'falta',
+            estado: ciudades.length ? 'elige-cine' : 'falta',
             pregunta: `${intent.movie.title} está en ${sedes.length} ${
               sedes.length === 1 ? 'cine' : 'cines'
-            }. ¿En qué distrito o provincia estás?`,
+            }. ¿En qué ciudad o distrito estás?`,
+            opciones: ciudades.length ? ciudades.map((c) => ({ nombre: c })) : undefined,
             intent,
             contexto: recordar(intent),
           };
@@ -774,6 +781,21 @@ function preguntarQuePelicula({ intent, cinemaList }) {
       intent,
       contexto: recordar(intent),
     };
+  }
+  if (!intent.cinema) {
+    // Sin sede y sin película, "dime el nombre de la película" no ayuda a quien
+    // acaba de preguntar «¿qué películas hay?». Qué se da depende del distrito,
+    // así que se pregunta eso, con las ciudades a un toque.
+    const ciudades = ciudadesPrincipales(cinemaList);
+    if (ciudades.length) {
+      return {
+        estado: 'elige-cine',
+        pregunta: '¿En qué ciudad o distrito vas al cine? Te digo qué dan ahí.',
+        opciones: ciudades.map((c) => ({ nombre: c })),
+        intent,
+        contexto: recordar(intent),
+      };
+    }
   }
   return {
     estado: 'falta',

@@ -311,6 +311,22 @@ que el "5" de "a las 5" no ganara contra "Toy Story 5". Ahora el número se
 descarta **sólo si alguien más lo usó** —una hora, una fecha, una cantidad—; si
 no lo usó nadie, es lo único que distingue una parte de la otra.
 
+### La fricción más repetida: preguntar dónde, sin botones
+
+En una semana: 30 conversaciones, 127 turnos, 56 llegaron a una función. De los
+36 turnos atascados, **14 eran la misma pregunta**:
+
+    quiero ver la odisea mañana  → «La Odisea está en 43 cines. ¿En qué distrito o provincia estás?»
+    Moana                        → «Moana está en 10 cines. ¿En qué distrito o provincia estás?»
+    quiero ver shrek mañana      → idem
+
+Es una pregunta correcta —sin saber dónde está la persona, ofrecer sedes es
+adivinar— pero era la **única sin botones**: todas las demás ofrecen por dónde
+seguir y ésta obligaba a escribir. Ahora llega con las ciudades donde esa
+película sí se da, a un toque, y de ahí a la función son dos más. Igual «¿qué
+películas hay?», que contestaba "dime el nombre de la película" a quien acababa
+de pedir la lista: ahora pregunta la ciudad, con botones.
+
 ### Una lección aparte: las pruebas también caducan
 
 Dos veces en el mismo día se puso roja una prueba que nadie había tocado, porque
