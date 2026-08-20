@@ -105,8 +105,10 @@ cines de otra ciudad.
 
 **Nunca contesta sólo "no hay".** Si la ventana pedida está vacía, ensancha por
 pasos y dice qué cambió: primero la hora, después el día, y si la película ya
-termina antes de la fecha pedida, ofrece la última función. Esa es la mitad del
-producto.
+termina antes de la fecha pedida, ofrece la última función. Vale igual para la
+cartelera de una sede: preguntar "¿qué dan hoy?" cuando ya pasó la última
+función responde «hoy ya no quedan, pero mañana sí» con la lista, en vez de
+devolver la pregunta. Esa es la mitad del producto.
 
 **Termina en Cineplanet.** La web resuelve la frase y entrega el enlace; los
 asientos y el pago ocurren allá. No se piden ni se guardan datos personales.
@@ -126,14 +128,18 @@ Para que la use alguien más hace falta un servidor, y hay dos caminos, ambos
 gratis y sin tarjeta:
 
 - **Vercel** — [`vercel.json`](vercel.json) y las funciones de [`api/`](api).
-  No duerme, así que la primera consulta responde igual de rápido que la
-  décima. Es el que conviene si el enlace se comparte.
+  No duerme como Render, pero una instancia nueva paga el arranque: pide la
+  cookie y los tres `cache` de Cineplanet antes de contestar. Medido en
+  producción, entre 1,6 s la primera consulta y 0,6 s las siguientes. Es el que
+  conviene si el enlace se comparte.
 - **Render** — [`render.yaml`](render.yaml), proceso permanente, cero cambios.
   En el plan gratuito duerme tras ~15 minutos sin visitas y despertarlo tarda
   cerca de un minuto.
 
-En Vercel el conteo de búsquedas populares vive en la memoria de cada instancia,
-así que es aproximado y se reinicia solo. Es para sugerir, no para medir.
+Las búsquedas que se ofrecen como ejemplo salen de la bitácora, no de un
+contador en memoria: en Vercel cada petición corre en una instancia distinta y
+ese contador nunca contaba. Sólo se ofrece lo que **escribieron personas
+distintas** y que, probado en el momento, llega a una función por sí solo.
 
 Dos cosas que el servidor necesita en producción y que no se notan en local:
 
@@ -214,15 +220,35 @@ Todo sale como JSON por stdout, para encadenarlo con otras cosas.
 node bin/cine.js funciones "La Odisea" --fecha manana --desde 16 --hasta 18 --cerca
 ```
 
-### Cache en disco
+### Cache: en memoria con plazo, y en disco para las caídas
 
-Cada respuesta buena se guarda en `.cache/`. Si Cineplanet no responde, el CLI
-tira del último snapshot, marca `"stale": true` y avisa la antigüedad por
-stderr. Sirve para seguir eligiendo función durante una caída.
+En memoria, cada respuesta vence: el catálogo a los diez minutos y el mapa de
+butacas a los cuarenta y cinco segundos. Sin eso, un proceso que vive horas
+—un servidor permanente— congela lo que trajo: butacas ya vendidas siguen
+viéndose libres y, pasada la medianoche, la cartelera de "hoy" es la de ayer.
+Las llamadas tienen plazo de ocho segundos y dos partes de la misma respuesta
+que piden el mismo dato hacen una sola llamada.
 
-No cubre los mapas de butacas: cada `seatplan` es de una sesión concreta y la
-ocupación cambia sola. Un mapa viejo no dice qué está libre ahora, así que ahí
-falla limpio en vez de mentir.
+En disco, cada respuesta buena del **catálogo** se guarda en `.cache/`. Si
+Cineplanet no responde, se tira del último snapshot: el CLI marca
+`"stale": true` y avisa la antigüedad por stderr, y la web lo dice en la
+tarjeta, porque ese enlace puede llevar a una página de compra vacía.
+
+Los mapas de butacas quedan fuera a propósito: la ocupación cambia sola y un
+mapa viejo muestra como libres asientos ya vendidos —y encima se sugieren
+butacas sobre él—. Ahí falla limpio en vez de mentir; la función se ofrece
+igual, avisando que no se pudo cargar el mapa.
+
+### Pruebas
+
+```bash
+npm test
+```
+
+Sin dependencias: el runner de Node. Corren contra la cartelera del día, así que
+ninguna fija un título ni una sede a mano —lo que se afirma es la forma de la
+respuesta— y las que necesitan una película concreta se saltan solas si ya no
+está. Un build rojo por algo que no rompimos enseña a ignorar el rojo.
 
 ### Uso conversacional
 

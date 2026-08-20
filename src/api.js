@@ -79,7 +79,17 @@ export function edadDelCatalogo() {
   return edades.length ? Math.max(...edades) : null;
 }
 
+/**
+ * El snapshot en disco sirve para el catálogo, no para las butacas: un mapa
+ * viejo muestra como libres asientos ya vendidos, y sobre eso se sugieren
+ * butacas y se ofrece un botón de comprar. Preferimos no mostrar mapa —quien
+ * llama lo dice— antes que mostrar uno que miente. Está documentado así en
+ * README y NOTES; el código no lo cumplía.
+ */
+const sirveElSnapshot = (path) => !path.startsWith('/seatplan');
+
 function writeCache(path, json) {
+  if (!sirveElSnapshot(path)) return;
   try {
     mkdirSync(CACHE_DIR, { recursive: true });
     writeFileSync(cacheFile(path), JSON.stringify(json));
@@ -125,14 +135,14 @@ async function pedir(path) {
     // Un 403 sin cookie significa que su backend de sesiones no responde; es la
     // misma causa del "¡Ups! algo sucedió" de su web. Ahí sirve el último
     // snapshot: deja seguir eligiendo función aunque no se pueda comprar.
-    const cached = readCache(path);
+    const cached = sirveElSnapshot(path) ? readCache(path) : null;
     if (cached) {
       cache.set(path, { json: cached.json, obtenido: Date.now(), edadInicial: cached.edad });
       return cached.json;
     }
     // Y si tampoco hay disco, sirve lo que ya se había traído aunque haya
     // vencido: una cartelera de hace un rato es mejor que una disculpa.
-    const vencido = cache.get(path);
+    const vencido = sirveElSnapshot(path) ? cache.get(path) : null;
     if (vencido) return vencido.json;
     const hint = !cookie
       ? ' — Cineplanet no está emitiendo cookie de sesión, su plataforma está caída. Reintenta en unos minutos.'

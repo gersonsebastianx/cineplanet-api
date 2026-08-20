@@ -101,15 +101,21 @@ posiciones que calcula `src/seatmap.js`, con el mismo patrón de ocupadas.
 La forma de la API la documentó primero
 [asther0/cineplanet-cli](https://github.com/asther0/cineplanet-cli) (Rust).
 
-## Cache en disco
+## Cache: plazos en memoria, snapshot en disco
 
-`src/api.js` guarda cada respuesta buena en `.cache/` y tira de ahí cuando
-Cineplanet no responde. Sirve para seguir eligiendo función durante una caída;
-el CLI marca `"stale": true` y avisa por stderr la antigüedad en minutos.
+En memoria vence todo: catálogo a los 10 minutos, mapa de butacas a los 45
+segundos. Sin plazo, un proceso largo sirve para siempre lo que trajo una vez
+—butacas vendidas vistas como libres, cartelera de ayer a las 00:30—; en Vercel
+lo tapaban los arranques en frío, en un servidor permanente no.
 
-Lo que **no** cubre: los mapas de butacas. Cada `seatplan` es de una sesión
-concreta y sólo queda cacheado si ya se consultó esa sesión antes. Y aunque
-estuviera, la ocupación cambia sola — un mapa viejo no dice qué está libre ahora.
+En disco, `src/api.js` guarda cada respuesta buena del **catálogo** en `.cache/`
+y tira de ahí cuando Cineplanet no responde: el CLI marca `"stale": true` y
+avisa por stderr la antigüedad en minutos, y la web lo dice en la tarjeta.
+
+Los `seatplan` no se guardan ni se sirven desde el snapshot. La ocupación cambia
+sola: un mapa viejo muestra como libres asientos ya vendidos, y encima se
+sugieren butacas y se ofrece comprar sobre esa mentira. Falla limpio y la
+función se ofrece igual, avisando que no se pudo cargar el mapa.
 
 ## El circuito: de una queja a una prueba
 

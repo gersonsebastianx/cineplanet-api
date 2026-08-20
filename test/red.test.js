@@ -4,7 +4,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -53,4 +53,26 @@ test('cada dato sabe de cuándo es', async (t) => {
   const edad = edadDelDato('/prueba/dos');
   assert.ok(edad != null && edad < 5000, `edad rara: ${edad}`);
   assert.equal(edadDelDato('/prueba/jamas-pedido'), null);
+});
+
+// Un mapa de butacas viejo muestra como libres asientos ya vendidos, y encima
+// se sugieren butacas sobre él. Vale más quedarse sin mapa: quien llama avisa
+// «no pude cargar el mapa» y ofrece la función igual. El catálogo sí se sirve
+// del snapshot: una cartelera de hace un rato deja seguir eligiendo.
+test('el mapa de butacas nunca sale de un snapshot; el catálogo sí', async (t) => {
+  const archivo = (ruta) => join(process.env.CACHE_DIR, `${ruta.replace(/[^a-z0-9]+/gi, '_')}.json`);
+  const butacas = '/seatplan/cinema/0000000030/session/7';
+  const catalogo = '/cache/otrocache';
+  writeFileSync(archivo(butacas), JSON.stringify({ viejo: true }));
+  writeFileSync(archivo(catalogo), JSON.stringify({ viejo: true }));
+
+  globalThis.fetch = async () => {
+    throw new Error('Cineplanet caído');
+  };
+  t.after(() => {
+    globalThis.fetch = original;
+  });
+
+  await assert.rejects(() => getJson(butacas), /Cineplanet caído/);
+  assert.deepEqual(await getJson(catalogo), { viejo: true });
 });

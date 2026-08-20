@@ -1,3 +1,7 @@
 .cache/
 node_modules/
 config.json
+.vercel/
+.env
+.env.*
+.DS_Store
