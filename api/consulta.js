@@ -11,12 +11,15 @@ export default async function handler(req, res) {
     return res.status(405).json({ estado: 'error', mensaje: 'Método no permitido' });
   }
   try {
-    const { texto, contexto, sesion } = req.body ?? {};
+    const { texto, contexto, sesion, elegido } = req.body ?? {};
     if (typeof texto !== 'string' || !texto.trim()) {
       return res.status(400).json({ estado: 'error', mensaje: 'Escribe qué quieres ver.' });
     }
     const respuesta = await resolveQuery(texto.slice(0, 300), {
       contexto: contexto && typeof contexto === 'object' ? contexto : null,
+      // Lo pulsado viaja con identificador: pulsar un botón no debe volver a
+      // pasar por el intérprete.
+      elegido: elegido && typeof elegido === 'object' ? elegido : null,
     });
     registrar(texto, respuesta);
     // La web siempre manda una sesión; lo que llega sin ella no es una persona

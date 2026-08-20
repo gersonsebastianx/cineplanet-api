@@ -108,13 +108,16 @@ const server = createServer(async (req, res) => {
       return json(res, 429, { estado: 'error', mensaje: 'Demasiadas consultas seguidas. Espera un momento.' });
     }
     try {
-      const { texto, contexto, sesion } = JSON.parse(await readBody(req));
+      const { texto, contexto, sesion, elegido } = JSON.parse(await readBody(req));
       if (typeof texto !== 'string' || !texto.trim()) {
         return json(res, 400, { estado: 'error', mensaje: 'Escribe qué quieres ver.' });
       }
       // El contexto lo guarda el navegador, así el servidor no necesita sesiones.
       const respuesta = await resolveQuery(texto.slice(0, 300), {
         contexto: contexto && typeof contexto === 'object' ? contexto : null,
+        // Lo pulsado viene con identificador; se busca en el catálogo, así que
+        // un valor inventado no elige nada.
+        elegido: elegido && typeof elegido === 'object' ? elegido : null,
       });
       contar(respuesta);
       await anotar({ sesion, texto, respuesta });

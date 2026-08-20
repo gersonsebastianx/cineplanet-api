@@ -6,7 +6,7 @@
 
 import { movies, cinemas, showtimes, nearest } from './catalog.js';
 import { seatMap, bestBlocks, SalaAgotada } from './seatmap.js';
-import { parse, limaToday, generoPorNombre } from './parser.js';
+import { parse, limaToday, generoPorNombre, tokens } from './parser.js';
 
 const MISSING = {
   movie: 'No reconocí la película. ¿Cuál quieres ver?',
@@ -75,7 +75,7 @@ async function mismoGenero(pelicula, movieList, cinemaId, today) {
       await showtimes({ movie: m, cinemaIds: cinemaId ? [cinemaId] : undefined }),
       today,
     );
-    if (f.length) con.push({ titulo: m.title, funciones: f.length });
+    if (f.length) con.push({ id: m.id, titulo: m.title, funciones: f.length });
   }
   return con.sort((a, b) => b.funciones - a.funciones).slice(0, 4);
 }
@@ -88,7 +88,7 @@ async function loMasDado(movieList, cinemaId, today, limite = 6) {
       await showtimes({ movie: m, cinemaIds: cinemaId ? [cinemaId] : undefined }),
       today,
     );
-    if (f.length) con.push({ titulo: m.title, funciones: f.length });
+    if (f.length) con.push({ id: m.id, titulo: m.title, funciones: f.length });
   }
   return con.sort((a, b) => b.funciones - a.funciones).slice(0, limite);
 }
@@ -300,7 +300,9 @@ const REGLAS = [
     nombre: 'pelicula-solo-parecida',
     cuando: ({ fresco }) => !!fresco.movie && fresco.movieConfianza === 'media',
     responde: ({ fresco, intent }) => {
-      const opciones = fresco.movieAlternativas.slice(0, 3).map((m) => ({ nombre: m.title }));
+      const opciones = fresco.movieAlternativas
+        .slice(0, 3)
+        .map((m) => ({ nombre: m.title, peliculaId: m.id }));
       return {
         estado: 'confirmar',
         pregunta:
@@ -329,7 +331,7 @@ const REGLAS = [
         pregunta: cine
           ? `Lo más visto en ${cine.name} ahora mismo:`
           : 'Lo más visto ahora mismo:',
-        opciones: lista.map((m) => ({ nombre: m.titulo })),
+        opciones: lista.map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
         intent,
         contexto: recordar({ ...intent, movie: null }),
       };
@@ -349,7 +351,7 @@ const REGLAS = [
         pregunta: uno
           ? `¿Te refieres a ${fresco.movieSugerencias[0].title}?`
           : `¿Cuál de estas quieres ver${donde}?`,
-        opciones: fresco.movieSugerencias.map((m) => ({ nombre: m.title })),
+        opciones: fresco.movieSugerencias.map((m) => ({ nombre: m.title, peliculaId: m.id })),
         intent,
         contexto: recordar({ ...intent, movie: null }),
       };
@@ -400,7 +402,7 @@ const REGLAS = [
           pregunta: parecidaATitulo(fresco)
             ? `Lo siento, «${dicho}» no está en cartelera${donde}. Estas sí:`
             : `No entendí «${dicho}». Esto hay${donde}:`,
-          opciones: enCartelera.map((m) => ({ nombre: m.titulo })),
+          opciones: enCartelera.map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
           intent,
           contexto: recordar({ ...intent, movie: null }),
         };
@@ -440,7 +442,7 @@ const REGLAS = [
           : `Lo siento, ${intent.movie.title} ya no está en cartelera.${
               parecidas.length ? ` De ${genero} sí hay:` : ' Esto sí:'
             }`,
-        opciones: alternativas.map((m) => ({ nombre: m.titulo })),
+        opciones: alternativas.map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
         intent,
         contexto: recordar({ ...intent, movie: null }),
       };
@@ -570,115 +572,159 @@ const entendioAlgo = (fresco) =>
 /**
  * "¿qué hay hoy en Salaverry?" es de lo más común que se pregunta, y la
  * cartelera está a un paso: listarla es mejor que pedir un título que todavía
- * no eligió. Devuelve `null` si no hay sede o si no queda nada que listar.
+ * no eligió.
+ *
+ * Cuando lo pedido no está, se cede en el mismo orden que en el camino de
+ * compra —primero la hora, después el día— y **se dice qué se cedió**. Antes
+ * sólo se cedía si había un género pedido: sin género, "¿qué dan hoy?" después
+ * de la última función contestaba "¿qué quieres ver?", que es la pregunta que
+ * la persona acababa de hacer. Pasadas las 22:30 eso le ocurría a 42 de las 43
+ * sedes.
+ *
+ * Devuelve `null` si no hay sede: ahí no hay cartelera que listar.
  */
 async function carteleraDeLaSede({ intent, movieList, today }) {
   if (!intent.cinema) return null;
   const dia = intent.date ?? today;
+  const cine = intent.cinema.name;
+  const franja = intent.said?.time ? ` ${intent.said.time}` : '';
   // Un género pedido filtra la cartelera; "para niños" además exige APT,
   // porque una animación +14 no sirve para lo que están pidiendo.
-  const candidatas = intent.genero
-    ? movieList.filter(
-        (m) =>
-          intent.genero.generos.includes(m.genre) &&
-          (!intent.genero.apt || m.rating === 'APT'),
-      )
-    : movieList;
-  const enCartelera = [];
-  for (const m of candidatas) {
-    const f = stillSellable(
-      await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
-      today,
-    );
-    const delDia = f.filter((s) => s.date === dia);
-    // Si pidió una franja, la cartelera es la de esa franja. Antes la hora
-    // se entendía y después se tiraba: alguien preguntaba "de 6pm en
-    // adelante" y recibía la lista del día entero, funciones ya pasadas
-    // incluidas.
-    const enFranja =
-      intent.from != null || intent.to != null
-        ? delDia.filter(
-            (s) =>
-              s.minutes >= (intent.from ?? 0) && s.minutes <= (intent.to ?? 24 * 60),
-          )
-        : delDia;
-    if (enFranja.length)
-      enCartelera.push({ titulo: m.title, funciones: enFranja.length, rating: m.rating });
-  }
-  if (enCartelera.length) {
-    enCartelera.sort((a, b) => b.funciones - a.funciones);
-    const cuando = dia === today ? 'hoy' : sayDate(dia, today);
-    // Repetir la franja pedida es lo que deja ver si se entendió bien.
-    const franja = intent.said?.time ? ` ${intent.said.time}` : '';
-    return {
-      estado: 'cartelera',
-      pregunta: intent.genero
-        ? `${frase(intent.genero.dice)} en ${intent.cinema.name} ${cuando}${franja}:`
-        : `En ${intent.cinema.name} ${cuando}${franja} dan:`,
-      opciones: enCartelera.slice(0, 8).map((m) => ({ nombre: m.titulo, nota: m.rating })),
-      intent,
-      contexto: recordar(intent),
-    };
-  }
-  if (!intent.genero) return null;
-  // Nunca dejar a alguien sin por dónde seguir. Además, el género que
-  // publica Cineplanet es grueso y a veces desconcierta —"El Final de la
-  // Calle Oak" figura como Acción— así que filtrar y callarse esconde
-  // justo lo que la persona buscaba. Se dice que no hay, y se muestra
-  // lo que sí.
-  // Primero, si lo pedido existe otro día: es la respuesta que se busca
-  // —"hoy no, mañana sí"— y no obliga a preguntar de nuevo.
-  const otroDia = [];
-  for (const m of candidatas) {
-    const f = stillSellable(
-      await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
-      today,
-    );
-    const proxima = f.filter((s) => s.date > dia).sort((a, b) => a.date.localeCompare(b.date))[0];
-    if (proxima) otroDia.push({ titulo: m.title, dia: proxima.date });
-  }
-  if (otroDia.length) {
-    const cuandoOtro = sayDate(
-      otroDia.map((m) => m.dia).sort()[0],
-      today,
-    );
-    return {
-      estado: 'cartelera',
-      pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}, pero ${cuandoOtro} sí:`,
-      opciones: otroDia.slice(0, 6).map((m) => ({ nombre: m.titulo })),
-      intent,
-      contexto: recordar(intent),
-    };
-  }
-  // Si tampoco hay otro día, se ofrece lo que sí se da **ese mismo día**:
-  // decir "no hay nada para niños hoy" y listar películas de mañana es
-  // contradecirse en la misma respuesta.
-  const resto = [];
+  const delGenero = (m) =>
+    !intent.genero ||
+    (intent.genero.generos.includes(m.genre) && (!intent.genero.apt || m.rating === 'APT'));
+  const enFranja = (s) =>
+    (intent.from == null && intent.to == null) ||
+    (s.minutes >= (intent.from ?? 0) && s.minutes <= (intent.to ?? 24 * 60));
+
+  // Una sola pasada por la cartelera de la sede: de ahí salen todas las
+  // respuestas posibles, y antes se recorría hasta tres veces.
+  const pedido = []; // lo pedido: género y franja, el día pedido
+  const aOtraHora = []; // el género pedido ese día, a otra hora
+  const delDia = []; // cualquier película, ese día
+  const masAdelante = []; // el género pedido, el próximo día que lo tenga
+  const cualquieraAdelante = []; // cualquier película, el próximo día que la tenga
   for (const m of movieList) {
     const f = stillSellable(
       await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
       today,
     );
-    if (f.some((s) => s.date === dia)) resto.push(m.title);
+    if (!f.length) continue;
+    const hoy = f.filter((s) => s.date === dia);
+    const proxima = f.filter((s) => s.date > dia).sort((a, b) => a.date.localeCompare(b.date))[0];
+    if (hoy.length) delDia.push({ id: m.id, titulo: m.title });
+    if (proxima) cualquieraAdelante.push({ id: m.id, titulo: m.title, dia: proxima.date });
+    if (!delGenero(m)) continue;
+    const enLaFranja = hoy.filter(enFranja);
+    if (enLaFranja.length)
+      pedido.push({ id: m.id, titulo: m.title, funciones: enLaFranja.length, rating: m.rating });
+    else if (hoy.length)
+      aOtraHora.push({ id: m.id, titulo: m.title, funciones: hoy.length, rating: m.rating });
+    if (proxima) masAdelante.push({ id: m.id, titulo: m.title, dia: proxima.date });
   }
-  if (resto.length) {
+
+  const listar = (items) =>
+    items.slice(0, 8).map((m) => ({ nombre: m.titulo, nota: m.rating ?? null, peliculaId: m.id }));
+  const porFunciones = (a, b) => b.funciones - a.funciones;
+
+  // 1. Lo que se pidió, tal cual.
+  if (pedido.length) {
+    pedido.sort(porFunciones);
+    const cuando = cuandoTexto(dia, today);
     return {
       estado: 'cartelera',
-      pregunta: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
-        intent.said?.time ? ` ${intent.said.time}` : ''
-      }. Esto sí:`,
-      opciones: resto.slice(0, 6).map((t) => ({ nombre: t })),
+      // Repetir la franja pedida es lo que deja ver si se entendió bien.
+      pregunta: intent.genero
+        ? `${frase(intent.genero.dice)} en ${cine} ${cuando}${franja}:`
+        : `En ${cine} ${cuando}${franja} dan:`,
+      opciones: listar(pedido),
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+
+  // 2. Se cede la hora antes que el día: lo mismo que se pidió, más tarde o más
+  // temprano el mismo día.
+  if (franja && aOtraHora.length) {
+    aOtraHora.sort(porFunciones);
+    return {
+      estado: 'cartelera',
+      // La franja va pegada a lo que falta —"no hay funciones en la tarde"— y no
+      // colgando al final de la frase, donde parece otra cosa.
+      pregunta: `No hay ${intent.genero ? intent.genero.nada : 'funciones'}${franja} en ${cine} ${cuandoTexto(
+        dia,
+        today,
+      )}, pero sí a otras horas:`,
+      opciones: listar(aOtraHora),
+      intent,
+      // Se suelta la franja: ya se dijo que no se pudo respetar.
+      contexto: recordar({ ...intent, from: null, to: null }),
+    };
+  }
+
+  // 3. Ese día no hay lo pedido, pero otro día sí. Es la respuesta que se busca
+  // —"hoy no, mañana sí"— y no obliga a preguntar de nuevo.
+  //
+  // Además, el género que publica Cineplanet es grueso y a veces desconcierta
+  // —"El Final de la Calle Oak" figura como Acción— así que filtrar y callarse
+  // esconde justo lo que la persona buscaba.
+  const adelante = intent.genero ? masAdelante : cualquieraAdelante;
+  if (adelante.length) {
+    const cuandoOtro = adelante.map((m) => m.dia).sort()[0];
+    const conFuncion = adelante.filter((m) => m.dia === cuandoOtro);
+    // "Hoy ya no quedan funciones ahora" se contradice sola: cuando la franja
+    // pedida era el reloj —"ahorita", "más tarde"— ya lo dice el "ya no quedan".
+    const franjaUtil = dia === today && /^(ahora|más tarde)$/.test(intent.said?.time ?? '') ? '' : franja;
+    const abre =
+      dia === today
+        ? intent.genero
+          ? `No hay ${intent.genero.nada} hoy${franjaUtil} en ${cine}`
+          : `Hoy ya no quedan funciones${franjaUtil} en ${cine}`
+        : `${frase(cuandoTexto(dia, today))} no hay ${
+            intent.genero ? intent.genero.nada : 'funciones'
+          }${franjaUtil} en ${cine}`;
+    return {
+      estado: 'cartelera',
+      pregunta: `${abre}, pero ${sayDate(cuandoOtro, today)} sí:`,
+      opciones: (conFuncion.length ? conFuncion : adelante)
+        .slice(0, 6)
+        .map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
+      intent,
+      // Se recuerda el día que sí tiene funciones: pulsar un título después de
+      // esto debe llevar a ese día, no repetir que el pedido estaba vacío.
+      contexto: recordar({ ...intent, date: cuandoOtro, from: null, to: null }),
+    };
+  }
+
+  // 4. Del género pedido no hay nada, ni ese día ni después: se ofrece lo que sí
+  // se da **ese mismo día**. Decir "no hay nada para niños hoy" y listar
+  // películas de mañana es contradecirse en la misma respuesta.
+  if (intent.genero && delDia.length) {
+    return {
+      estado: 'cartelera',
+      pregunta: `No hay ${intent.genero.nada}${franja} en ${cine} ${cuandoTexto(dia, today)}. Esto sí:`,
+      opciones: delDia.slice(0, 6).map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
       intent,
       contexto: recordar({ ...intent, genero: null }),
     };
   }
+
+  // 5. No queda nada que ofrecer. Sin género tampoco hay pregunta que hacer:
+  // decirlo es lo único honesto.
+  if (!intent.genero && !delDia.length) {
+    return {
+      estado: 'sin-cartelera',
+      mensaje: `${cine} no tiene funciones publicadas por ahora.`,
+      intent,
+      contexto: recordar(intent),
+    };
+  }
+  if (!intent.genero) return null;
   return {
     estado: 'sin-cartelera',
     // Sin nombrar la franja, "no hay nada de terror hoy" es más rotundo de
     // lo que sabemos: puede haber, sólo que no a la hora pedida.
-    mensaje: `No hay ${intent.genero.nada} en ${intent.cinema.name} ${cuandoTexto(dia, today)}${
-      intent.said?.time ? ` ${intent.said.time}` : ''
-    }.`,
+    mensaje: `No hay ${intent.genero.nada}${franja} en ${cine} ${cuandoTexto(dia, today)}.`,
     intent,
     contexto: recordar(intent),
   };
@@ -917,9 +963,36 @@ async function caminoDeCompra(ctx) {
  * Resuelve una frase contra la cartelera real.
  * @returns {Promise<object>} respuesta con `estado` y lo necesario para mostrarla
  */
-export async function resolve(text, { today = limaToday(), contexto = null } = {}) {
+export async function resolve(text, { today = limaToday(), contexto = null, elegido = null } = {}) {
   const [movieList, cinemaList] = await Promise.all([movies(), cinemas()]);
   const fresco = parse(text, { movies: movieList, cinemas: cinemaList, today });
+
+  // Pulsar un botón no es escribir una frase: si la opción traía identificador,
+  // ésa es la elección y no se vuelve a interpretar el texto. Sin esto, dos
+  // títulos que el intérprete no sabe separar —"…Parte 1" y "…Parte 2"—
+  // contestaban «¿cuál de estas?» y pulsar la respuesta repetía la pregunta,
+  // para siempre. Es la misma lección que ya se había aprendido con las sedes.
+  const fijada = elegido?.peliculaId
+    ? (movieList.find((m) => m.id === elegido.peliculaId) ?? null)
+    : null;
+  if (fijada) {
+    const suyas = new Set(tokens(fijada.title));
+    Object.assign(fresco, {
+      movie: fijada,
+      movieConfianza: 'alta',
+      movieAlternativas: [],
+      movieSugerencias: [],
+      // El título ya está explicado: nombrarlo como "no entendí" sería absurdo.
+      sobrantes: fresco.sobrantes.filter((w) => !suyas.has(w)),
+    });
+  }
+  const fijadaSede = elegido?.cineId
+    ? (cinemaList.find((c) => c.id === elegido.cineId) ?? null)
+    : null;
+  if (fijadaSede) {
+    Object.assign(fresco, { cinema: fijadaSede, cinemaConfianza: 'alta', cinemaOptions: null });
+  }
+
   // Una conversación acumula: "La Odisea" y después "en Barranco" son una sola
   // intención. Lo nuevo pisa lo viejo; lo que no se mencionó, se hereda.
   const previo = contexto

@@ -53,7 +53,8 @@ const STOP = new Set(
     'the a of in on at and for to my i').split(' '),
 );
 
-const tokens = (s) => norm(s).split(' ').filter((w) => w && !STOP.has(w));
+/** Palabras con contenido de una frase: sin tildes, sin muletillas. */
+export const tokens = (s) => norm(s).split(' ').filter((w) => w && !STOP.has(w));
 
 // Palabras frecuentes del español. NO se usan para descartar títulos: una
 // película puede llamarse "Zona Cero" y encontrarse escribiéndolo exacto. Lo que

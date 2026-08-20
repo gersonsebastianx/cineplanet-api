@@ -530,7 +530,10 @@ function tarjeta(r) {
 // contestar que no existe.
 function elegir(o) {
   if (o.id) contexto = { ...(contexto ?? {}), cinemaId: o.id };
-  consultar(o.nombre);
+  // Un título pulsado viaja con su identificador. Sin esto, dos películas que
+  // se llaman casi igual —"…Parte 1" y "…Parte 2"— devolvían la misma pregunta
+  // cada vez que se respondía pulsando.
+  consultar(o.nombre, o.peliculaId ? { peliculaId: o.peliculaId } : o.id ? { cineId: o.id } : null);
 }
 
 /**
@@ -613,7 +616,7 @@ function responder(r) {
   abajo();
 }
 
-async function consultar(valor) {
+async function consultar(valor, elegido = null) {
   decir(valor, 'yo');
   texto.value = '';
   enviar.disabled = true;
@@ -626,7 +629,7 @@ async function consultar(valor) {
     const res = await fetch('/api/consulta', {
       method: 'POST',
       headers: { 'content-type': 'application/json' },
-      body: JSON.stringify({ texto: valor, contexto, sesion }),
+      body: JSON.stringify({ texto: valor, contexto, sesion, elegido }),
     });
     datos = await res.json();
   } catch {
