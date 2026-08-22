@@ -44,10 +44,29 @@ export default async function handler(req, res) {
   const llegaron = new Set(filas.filter((f) => f[ESTADO] === 'ok').map((f) => f[SESION]));
   const sinLlegar = [...sesiones].filter((s) => !llegaron.has(s));
 
+  // Cuántas consultas por día, en horario de Lima: es la forma de ver el efecto
+  // de una publicación o de un arreglo sin abrir la hoja.
+  const diaLima = (iso) => new Date(new Date(iso).getTime() - 5 * 3600e3).toISOString().slice(0, 10);
+  const porDia = {};
+  for (const f of filas) {
+    const d = diaLima(f[FECHA]);
+    porDia[d] ??= { turnos: 0, sesiones: new Set(), ok: 0 };
+    porDia[d].turnos += 1;
+    porDia[d].sesiones.add(f[SESION]);
+    if (f[ESTADO] === 'ok') porDia[d].ok += 1;
+  }
+
   res.status(200).json({
     dias,
     sesiones: sesiones.size,
     turnos: filas.length,
+    primera: filas[0]?.[FECHA] ?? null,
+    ultima: filas.at(-1)?.[FECHA] ?? null,
+    porDia: Object.fromEntries(
+      Object.entries(porDia)
+        .sort(([a], [b]) => a.localeCompare(b))
+        .map(([d, v]) => [d, { turnos: v.turnos, sesiones: v.sesiones.size, ok: v.ok }]),
+    ),
     porEstado,
     sesionesSinFuncion: sinLlegar.length,
     // Una respuesta que afirma que algo no está en cartelera merece revisión:
