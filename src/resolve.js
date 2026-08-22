@@ -303,14 +303,23 @@ const REGLAS = [
     // igual de segura que si fuera correcta.
     nombre: 'sede-solo-parecida',
     cuando: ({ fresco }) => !!fresco.cinema && fresco.cinemaConfianza === 'media',
-    responde: ({ fresco, intent }) => ({
-      estado: 'confirmar',
-      pregunta: `¿Te refieres a ${fresco.cinema.name}?`,
-      opciones: [{ id: fresco.cinema.id, nombre: fresco.cinema.name, ciudad: fresco.cinema.city }],
-      intent,
-      // Se olvida la sede dudosa: si no era esa, heredarla repetiría el error.
-      contexto: recordar({ ...intent, cinema: null, districtCoords: null }),
-    }),
+    responde: ({ fresco, intent }) => {
+      // Cuando la duda es entre varias, se muestran todas. Alguien contestó
+      // "ate" —su distrito— y se le preguntó «¿te refieres a CP Puruchuco?»
+      // ofreciendo una sola: en Ate hay dos. Acertó de casualidad, y si quería
+      // la otra tenía que decir que no y empezar de nuevo.
+      const empatadas = fresco.cinemaOptions?.length > 1 ? fresco.cinemaOptions : null;
+      return {
+        estado: empatadas ? 'elige-cine' : 'confirmar',
+        pregunta: empatadas ? '¿A cuál de estas te refieres?' : `¿Te refieres a ${fresco.cinema.name}?`,
+        opciones: (empatadas ?? [fresco.cinema])
+          .slice(0, 4)
+          .map((c) => ({ id: c.id, nombre: c.name, ciudad: c.city })),
+        intent,
+        // Se olvida la sede dudosa: si no era esa, heredarla repetiría el error.
+        contexto: recordar({ ...intent, cinema: null, districtCoords: null }),
+      };
+    },
   },
 
   {

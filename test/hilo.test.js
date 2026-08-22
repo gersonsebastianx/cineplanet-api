@@ -8,7 +8,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from '../src/resolve.js';
-import { movies } from '../src/catalog.js';
+import { movies, cinemas } from '../src/catalog.js';
 
 const enCartelera = (await movies()).find((m) => !m.comingSoon);
 
@@ -110,5 +110,27 @@ test('con cabos sueltos se pregunta, no se afirma', async () => {
   assert.ok(
     r.estado === 'confirmar' || /no está en cartelera|no entend/i.test(r.pregunta ?? r.mensaje ?? ''),
     `afirmó sin preguntar: [${r.estado}] ${r.pregunta ?? r.mensaje}`,
+  );
+});
+
+// Del 22 de agosto: alguien buscaba La Odisea, respondió "ate" —su distrito— y
+// la web preguntó «¿te refieres a CP Puruchuco?», ofreciendo una sola sede. En
+// Ate hay dos. Acertó de casualidad; si quería la otra, tenía que decir que no
+// y volver a empezar. Cuando dos sedes empatan hay que mostrarlas, no elegir
+// una y preguntar por ella.
+test('un lugar que empata entre dos sedes las ofrece, no adivina una', async (t) => {
+  const cs = await cinemas();
+  const cuenta = new Map();
+  for (const c of cs) if (c.district) cuenta.set(c.district, (cuenta.get(c.district) ?? 0) + 1);
+  const compartido = [...cuenta.entries()].find(([, n]) => n > 1)?.[0];
+  if (!compartido) return t.skip('hoy ningún distrito tiene dos sedes');
+
+  const r = await resolve(compartido);
+  const enJuego = cs.filter((c) => c.district === compartido).map((c) => c.name);
+  assert.ok(
+    r.opciones?.length > 1,
+    `«${compartido}» tiene ${enJuego.length} sedes (${enJuego.join(', ')}) y ofreció ${
+      r.opciones?.length ?? 0
+    }: ${r.pregunta}`,
   );
 });
