@@ -97,6 +97,8 @@ const NIVELES = {
     'santiago',
     'espera, para qué pais de cineplanet funciona?',
     'era',
+    // Del 20 de agosto: una película que no tenemos, con un país en el nombre.
+    'lindo méxico mágico',
   ],
 };
 

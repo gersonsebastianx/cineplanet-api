@@ -311,6 +311,23 @@ que el "5" de "a las 5" no ganara contra "Toy Story 5". Ahora el número se
 descarta **sólo si alguien más lo usó** —una hora, una fecha, una cantidad—; si
 no lo usó nadie, es lo único que distingue una parte de la otra.
 
+### Lo que trajo el primer día con los arreglos puestos
+
+Cinco conversaciones, doce turnos, **ninguna se fue sin ver una función** (antes:
+4 de 30). Un solo turno atascado, y fue culpa de la regla nueva: alguien
+escribió «lindo méxico mágico» —una película que no tenemos— y se le contestó
+que no tenemos cartelera de México.
+
+Dos correcciones de eso:
+
+- **Un país dentro de un título no es un destino.** El nombre de lugar sólo
+  cuenta si va detrás de una preposición («en chile») o si es todo lo que dice
+  el mensaje («chile», «santiago»).
+- **Con dos cabos sueltos se pregunta.** Sin lo anterior, la frase elegía «El
+  Arbol Magico» por compartir una sola palabra —«mágico»— y lo afirmaba sin
+  dudar, dejando «lindo» y «méxico» sin explicar. Ahora eso baja la certeza a
+  «¿te refieres a…?», que es la misma regla que ya valía para las sedes.
+
 ### La fricción más repetida: preguntar dónde, sin botones
 
 En una semana: 30 conversaciones, 127 turnos, 56 llegaron a una función. De los

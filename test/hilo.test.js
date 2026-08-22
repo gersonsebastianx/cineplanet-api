@@ -93,3 +93,22 @@ test('de la película a la función en dos toques', async (t) => {
   });
   assert.ok(['ok', 'cartelera'].includes(final.estado), `quedó en ${final.estado}: ${final.pregunta}`);
 });
+
+// El país dentro de un título no es un destino. Alguien escribió "lindo méxico
+// mágico" —una película que no tenemos— y se le contestó que no tenemos
+// cartelera de México. Un nombre de lugar sólo cuenta como lugar si va detrás
+// de "en" o si es todo lo que dice el mensaje.
+test('un país dentro de un título no se lee como destino', async () => {
+  const r = await resolve('lindo méxico mágico');
+  assert.ok(!/Cineplanet Perú/.test(r.pregunta ?? ''), `lo leyó como país: ${r.pregunta}`);
+});
+
+// Y tampoco se afirma qué película era: compartir una sola palabra con un
+// título, dejando dos sin explicar, da para preguntar, no para decidir.
+test('con cabos sueltos se pregunta, no se afirma', async () => {
+  const r = await resolve('lindo méxico mágico');
+  assert.ok(
+    r.estado === 'confirmar' || /no está en cartelera|no entend/i.test(r.pregunta ?? r.mensaje ?? ''),
+    `afirmó sin preguntar: [${r.estado}] ${r.pregunta ?? r.mensaje}`,
+  );
+});

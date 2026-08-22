@@ -16,7 +16,7 @@ const norm = (s) =>
     .trim();
 
 // Palabras que no distinguen un cine de otro ni una película de otra.
-const STOP = new Set(
+export const STOP = new Set(
   ('de del la el los las en para a un una unos unas y o con al cine cines cp ' +
     'quiero comprar entradas entrada ver boletos boleto funcion funciones ' +
     'pelicula peliculas por favor porfa dame busca buscame necesito me gustaria ' +
@@ -850,10 +850,24 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // distrito manda, y una palabra que ya explica el título tampoco cuenta
   // ("Chile 76" sería una película, no un país).
   const delTitulo = movieHit?.item ? new Set(tokens(movieHit.item.title)) : new Set();
+  //
+  // Nombrar el país no basta: alguien escribió "lindo méxico mágico" —una
+  // película— y se le contestó que no tenemos cartelera de México. Una palabra
+  // dentro de un título no es un destino. Cuenta como lugar sólo si va detrás
+  // de una preposición de lugar ("en chile") o si es todo lo que dice el
+  // mensaje ("chile", "santiago").
+  const dichoAparte = (lugar) => {
+    if (new RegExp(`\\b(?:en|de|desde|para|hacia|a)\\s+(?:el\\s+|la\\s+)?${lugar}\\b`).test(t)) return true;
+    const suyas = new Set(tokens(lugar));
+    return tokens(t).every((w) => suyas.has(w));
+  };
   const lugarAjeno =
     !cinemaHit && !district && !ciudadSinSede && !ciudadConSede
       ? (Object.keys(FUERA_DEL_PERU)
-          .filter((lugar) => new RegExp(`\\b${lugar}\\b`).test(t) && !delTitulo.has(lugar))
+          .filter(
+            (lugar) =>
+              new RegExp(`\\b${lugar}\\b`).test(t) && !delTitulo.has(lugar) && dichoAparte(lugar),
+          )
           .sort((a, b) => b.length - a.length)[0] ?? null)
       : null;
   const preguntaPais = PREGUNTA_PAIS.test(t);
@@ -901,9 +915,16 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   ]);
   const sobrantes = tokens(text).filter((w) => !atribuidas.has(w) && w.length >= 4);
 
+  // Un título elegido que deja dos palabras sin explicar no es una certeza:
+  // "lindo méxico mágico" —una película que no tenemos— eligió "El Arbol
+  // Magico" por compartir una sola palabra, y lo afirmó sin dudar. Con dos
+  // cabos sueltos se pregunta en vez de afirmar; es la misma regla que ya vale
+  // para las sedes.
+  const conCabosSueltos = !!movieHit?.item && movieHit.confianza === 'alta' && sobrantes.length >= 2;
+
   return {
     movie: movieHit?.item ?? null,
-    movieConfianza: movieHit?.item ? movieHit.confianza : null,
+    movieConfianza: movieHit?.item ? (conCabosSueltos ? 'media' : movieHit.confianza) : null,
     movieAlternativas: movieHit?.alternativas ?? [],
     movieSugerencias: movieHit?.sugerencias ?? [],
     cinema: cinemaHit?.item ?? null,
