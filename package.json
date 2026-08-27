@@ -17,6 +17,7 @@
   },
   "scripts": {
     "start": "node server.js",
-    "test": "node --test test/*.test.js"
+    "test": "node --test test/*.test.js",
+    "barrido": "node test/barrido.mjs"
   }
 }

@@ -291,7 +291,7 @@
 </header>
 
 <main id="chat">
-  <div class="bot msg">Dime la película, el cine y cuándo. Por ejemplo: «quiero ver Toy Story hoy entre 4 y 6 en el Real Plaza Salaverry».</div>
+  <div class="bot msg">Dime la película, el cine y cuándo. Por ejemplo: «quiero ver algo de terror hoy entre las 4 y 6 en el real plaza salaverry».</div>
 </main>
 
 <div class="ejemplos" id="ejemplos" aria-label="Sugerencias"></div>
@@ -644,6 +644,10 @@ async function consultar(valor, elegido = null) {
   if (datos) {
     responder(datos);
     recordarBusqueda(datos);
+    // Si lo pulsado resultó ser una película que ya salió de cartelera, se
+    // borra del historial: la caducidad por fecha no alcanza cuando una película
+    // se va antes de tiempo.
+    if (/ya no está en cartelera/i.test(datos.pregunta ?? '')) olvidarBusqueda(valor);
     pintarSugerencias();
   }
 }
@@ -661,28 +665,50 @@ ejemplos.addEventListener('click', (e) => {
 
 const HISTORIAL = 'cineplanet:historial';
 
+// Una película dura semanas en cartelera, no meses: pasado ese plazo, ofrecer
+// lo que uno buscó es ofrecer una puerta cerrada.
+const VIGENCIA_MS = 14 * 24 * 3600 * 1000;
+
+const leerHistorial = () => {
+  try {
+    const previo = JSON.parse(localStorage.getItem(HISTORIAL) ?? '[]');
+    // Formato viejo: una lista de textos sueltos, sin fecha. Se acepta y se
+    // deja caducar; no vale la pena romperle el historial a nadie por esto.
+    return previo
+      .map((x) => (typeof x === 'string' ? { texto: x, cuando: 0 } : x))
+      .filter((x) => x?.texto && Date.now() - (x.cuando ?? 0) < VIGENCIA_MS);
+  } catch {
+    // Navegación privada o almacenamiento lleno: se sigue sin historial.
+    return [];
+  }
+};
+
+const guardarHistorial = (lista) => {
+  try {
+    localStorage.setItem(HISTORIAL, JSON.stringify(lista.slice(0, 8)));
+  } catch {
+    /* sin historial se vive igual */
+  }
+};
+
 /** Lo que uno mismo buscó vale más que lo que busca el resto. */
 function recordarBusqueda(r) {
   const p = r?.pedido;
   if (!p?.pelicula || !p?.cine) return;
-  try {
-    const previo = JSON.parse(localStorage.getItem(HISTORIAL) ?? '[]');
-    const texto = `${p.pelicula} en ${p.cine}`;
-    const lista = [texto, ...previo.filter((x) => x !== texto)].slice(0, 8);
-    localStorage.setItem(HISTORIAL, JSON.stringify(lista));
-  } catch {
-    // Navegación privada o almacenamiento lleno: se sigue sin historial.
-  }
+  const texto = `${p.pelicula} en ${p.cine}`;
+  guardarHistorial([
+    { texto, cuando: Date.now() },
+    ...leerHistorial().filter((x) => x.texto !== texto),
+  ]);
+}
+
+/** Se cayó la película: el botón que la ofrecía deja de ofrecerse. */
+function olvidarBusqueda(texto) {
+  guardarHistorial(leerHistorial().filter((x) => x.texto !== texto));
 }
 
 async function pintarSugerencias() {
-  let propias = [];
-  try {
-    propias = JSON.parse(localStorage.getItem(HISTORIAL) ?? '[]');
-  } catch {
-    propias = [];
-  }
-  let lista = propias.slice(0, 3);
+  let lista = leerHistorial().slice(0, 3).map((x) => x.texto);
   if (!lista.length) {
     try {
       const res = await fetch('/api/populares');
@@ -692,8 +718,12 @@ async function pintarSugerencias() {
     }
   }
   // Lo que busca la gente manda, pero un solo botón se ve pobre: se completa
-  // con ejemplos hasta dos, sin repetir lo que ya está.
-  const PORDEFECTO = ['La Odisea mañana en la tarde en Salaverry', '¿Qué dan hoy en Trujillo?'];
+  // hasta dos, sin repetir lo que ya está. Los ejemplos con título y sede los
+  // arma el servidor con la cartelera del día; estos dos son el último recurso
+  // —si hasta eso falló— y por eso no nombran ninguna película ni ningún cine:
+  // una frase escrita a mano caduca el día que esa película sale de cartelera,
+  // y sería lo primero que ve alguien que llega por primera vez.
+  const PORDEFECTO = ['¿Qué películas hay hoy?', 'Quiero ir al cine mañana'];
   for (const ej of PORDEFECTO) {
     if (lista.length >= 2) break;
     if (!lista.some((t) => t.toLowerCase() === ej.toLowerCase())) lista.push(ej);

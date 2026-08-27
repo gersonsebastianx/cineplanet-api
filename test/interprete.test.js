@@ -478,10 +478,23 @@ test('un intercambio de letras es un solo error, no dos', () => {
   // Reportado: "Sherk una entrada" y "sHERK" no encontraban nada. Al teclear,
   // "sherk" por "shrek" es un dedo que se adelantó — el error más común — y la
   // cuenta simple lo cobraba doble, pasándose del margen.
-  for (const f of ['Sherk una entrada', 'sHERK', 'la odisae', 'toy stroy']) {
-    assert.notEqual(leer(f).movie, null, f);
+  // El caso reportado, si esa película sigue dándose; y además uno fabricado
+  // sobre la cartelera de hoy, que no puede caducar.
+  for (const f of ['Sherk una entrada', 'sHERK']) {
+    if (enCartelera('Shrek [2001]')) assert.notEqual(leer(f).movie, null, f);
   }
-  assert.match(leer('sherk').movie?.title ?? '', /Shrek/);
+  if (enCartelera('La Odisea')) assert.notEqual(leer('la odisae').movie, null, 'la odisae');
+  if (enCartelera('Shrek [2001]')) assert.match(leer('sherk').movie?.title ?? '', /Shrek/);
+
+  for (const palabra of titulosLargos.slice(0, 3)) {
+    const intercambiado = conIntercambio(palabra.toLowerCase());
+    if (intercambiado === palabra.toLowerCase()) continue;
+    const r = leer(intercambiado);
+    assert.ok(
+      r.movie || r.movieSugerencias?.length,
+      `«${intercambiado}» por «${palabra}»: un dedo que se adelanta no puede dejar a nadie sin nada`,
+    );
+  }
 });
 
 test('el intercambio no abre la puerta a cualquier parecido', () => {

@@ -141,6 +141,13 @@ contador en memoria: en Vercel cada petición corre en una instancia distinta y
 ese contador nunca contaba. Sólo se ofrece lo que **escribieron personas
 distintas** y que, probado en el momento, llega a una función por sí solo.
 
+Lo que falte se completa con la cartelera del día —la película más dada y la
+sede donde más se da— y se comprueba igual antes de ofrecerlo. Nada de esto se
+escribe a mano: un ejemplo con un título concreto caduca el día que esa película
+sale de cartelera, y sería lo primero que ve alguien que llega por primera vez.
+Por la misma razón el saludo nombra un género y no una película, y lo que uno
+mismo buscó se olvida a las dos semanas o en cuanto deja de existir.
+
 Dos cosas que el servidor necesita en producción y que no se notan en local:
 
 - **`TRUST_PROXY=1`.** Detrás de un proxy, `remoteAddress` es la del proxy y es
@@ -244,6 +251,18 @@ igual, avisando que no se pudo cargar el mapa.
 ```bash
 npm test
 ```
+
+```bash
+npm run barrido
+```
+
+`npm test` son las pruebas de siempre. El barrido es otra cosa y tarda un par de
+minutos: recorre las 43 sedes y todas las películas con funciones buscando las
+cuatro maneras de romper una conversación —bucles, callejones, afirmaciones
+inventadas y respuestas de otra sede—, y de paso comprueba que cada enlace de
+compra corresponda a la función que anuncia la tarjeta. Es la red que encontró
+el bucle de «…Parte 1 / Parte 2» y los 42 callejones de «¿qué dan hoy?» pasada
+la última función del día.
 
 Sin dependencias: el runner de Node. Corren contra la cartelera del día, así que
 ninguna fija un título ni una sede a mano —lo que se afirma es la forma de la

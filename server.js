@@ -14,6 +14,7 @@ import { fileURLToPath } from 'node:url';
 import { dirname, resolve as resolvePath, extname, normalize } from 'node:path';
 import { resolve as resolveQuery } from './src/resolve.js';
 import { anotar } from './src/bitacora.js';
+import { ejemplosDeLaCartelera } from './src/ejemplos.js';
 
 const ROOT = dirname(fileURLToPath(import.meta.url));
 const PUBLIC = resolvePath(ROOT, 'public');
@@ -139,7 +140,31 @@ const server = createServer(async (req, res) => {
   }
 
   if (req.method === 'GET' && url.pathname === '/api/populares') {
-    return json(res, 200, { populares: masBuscadas(3) });
+    // Lo más buscado sólo sirve si **todavía funciona**: una película se va de
+    // cartelera y el contador se queda, ofreciendo una puerta cerrada. Se
+    // comprueba antes de ofrecerla, igual que en la versión serverless.
+    const lista = [];
+    for (const texto of masBuscadas(8)) {
+      if (lista.length >= 3) break;
+      try {
+        const r = await resolveQuery(texto);
+        if (r.estado === 'ok') lista.push(texto);
+      } catch {
+        /* si no se puede comprobar, no se ofrece */
+      }
+    }
+    // Igual que en la versión serverless: lo que falte sale de la cartelera del
+    // día, comprobado, no de frases escritas a mano.
+    if (lista.length < 2) {
+      try {
+        for (const ej of await ejemplosDeLaCartelera(2 - lista.length)) {
+          if (!lista.includes(ej)) lista.push(ej);
+        }
+      } catch {
+        // Sin cartelera no hay ejemplos; la web tiene su propio último recurso.
+      }
+    }
+    return json(res, 200, { populares: lista });
   }
 
   if (req.method !== 'GET') return json(res, 405, { estado: 'error', mensaje: 'Método no permitido' });

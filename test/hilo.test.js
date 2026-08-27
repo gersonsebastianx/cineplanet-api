@@ -61,10 +61,14 @@ test('un parecido a otro título sí suelta la película anterior', async () => 
   // parecido: es el caso que la regla vigila.
   const conTipeo = otra.title.slice(0, 6).replace(/.$/, 'x');
   const segundo = await resolve(conTipeo, { contexto: primero.contexto });
-  if (!segundo.opciones?.length && segundo.contexto.movieId === enCartelera.id) {
-    // No llegó a parecerse a nada: el caso no aplica hoy.
-    return;
-  }
+  // El caso sólo aplica si lo escrito **se leyó como un título**: o se pregunta
+  // cuál era, o se dice que no está en cartelera. Si no se pareció a nada, la
+  // regla correcta es la contraria —conservar la película— y no hay nada que
+  // afirmar acá.
+  const loLeyoComoTitulo =
+    segundo.estado === 'confirmar' ||
+    /no está en cartelera/i.test(segundo.pregunta ?? segundo.mensaje ?? '');
+  if (!loLeyoComoTitulo) return;
   assert.notEqual(segundo.contexto.movieId, enCartelera.id);
 });
 

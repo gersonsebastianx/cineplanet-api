@@ -19,13 +19,25 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { resolve } from '../src/resolve.js';
+import { movies, showtimes } from '../src/catalog.js';
+
+// Los títulos salen de la cartelera del día, no de una lista escrita: el nivel
+// básico afirma que escribir el nombre de una película que **sí se está dando**
+// tiene que funcionar. Fijarlos a mano hacía fallar la prueba el día que esa
+// película salía de cartelera — pasó con Toy Story y con Moana, y un build rojo
+// por algo que no rompimos enseña a ignorar el rojo.
+const enCartelera = [];
+for (const m of await movies()) {
+  if (enCartelera.length >= 3) break;
+  if ((await showtimes({ movie: m })).length) enCartelera.push(m.title.toLowerCase());
+}
 
 const NIVELES = {
   // 1 — Lo mínimo. Si algo de esto falla, la web está rota.
   basico: [
     'hola', 'buenas', 'gracias', 'ok',
     'que hay?', 'que peliculas hay', 'que dan hoy', 'quiero ir al cine',
-    'la odisea', 'toy story', 'shrek', 'spiderman',
+    ...enCartelera,
     'hoy', 'mañana', 'en la tarde', 'en la noche',
     'trujillo', 'lima', 'salaverry', 'san miguel',
     'que me recomiendas', 'algo para ver hoy', 'nose que ver', 'estoy aburrido',

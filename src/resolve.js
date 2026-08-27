@@ -407,7 +407,7 @@ const REGLAS = [
     nombre: 'palabras-sin-explicar',
     cuando: ({ fresco }) =>
       !fresco.movie && fresco.sobrantes.length > 0 && (parecidaATitulo(fresco) || !entendioAlgo(fresco)),
-    responde: async ({ fresco, intent, movieList, today }) => {
+    responde: async ({ fresco, intent, movieList, cinemaList: ctxCiudades, today }) => {
       const dicho = fresco.sobrantes.join(' ');
       const parecida = parecidaATitulo(fresco);
       const noEntendi = parecida
@@ -423,12 +423,17 @@ const REGLAS = [
       // Sin saber dónde va a ir, listar cartelera es listar la de otra punta del
       // país: qué se da depende del distrito.
       if (!intent.cinema) {
+        // Con las ciudades a un toque, como el resto de las preguntas por el
+        // lugar. Ésta se había quedado atrás: alguien escribe una película que
+        // ya salió de cartelera —"toy story"— y recibía una pregunta a secas.
+        const ciudades = ciudadesPrincipales(ctxCiudades);
         return {
-          estado: 'falta',
+          estado: ciudades.length ? 'elige-cine' : 'falta',
           // Y se nombra lo que sí se entendió, para que se vea que no se perdió.
-          pregunta: `${noEntendi}. ¿En qué distrito vas al cine? Te digo ${
+          pregunta: `${noEntendi}. ¿En qué ciudad o distrito vas al cine? Te digo ${
             recuerdo.movie ? `dónde dan ${recuerdo.movie.title}` : 'qué hay ahí'
           }.`,
+          opciones: ciudades.length ? ciudades.map((c) => ({ nombre: c })) : undefined,
           intent,
           contexto: recordar(recuerdo),
         };

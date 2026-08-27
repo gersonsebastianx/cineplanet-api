@@ -7,6 +7,7 @@
 
 import { leerFilas } from '../src/bitacora.js';
 import { resolve } from '../src/resolve.js';
+import { ejemplosDeLaCartelera } from '../src/ejemplos.js';
 
 // Columnas de la hoja.
 const SESION = 1;
@@ -72,6 +73,14 @@ export default async function handler(req, res) {
       if (r.estado === 'ok') lista.push(c.texto);
     } catch {
       /* si falla la comprobación, simplemente no se ofrece */
+    }
+  }
+
+  // Si la bitácora todavía no da para dos, se completa con la cartelera del día
+  // —comprobada— en vez de con frases escritas a mano que caducan solas.
+  if (lista.length < 2) {
+    for (const ej of await ejemplosDeLaCartelera(2 - lista.length)) {
+      if (!lista.some((t) => clave(t) === clave(ej))) lista.push(ej);
     }
   }
 
