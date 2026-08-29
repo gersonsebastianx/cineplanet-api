@@ -709,6 +709,13 @@ const FUERA = [
   { pide: /\b(a\s+que\s+hora\s+(abren|cierran)|horario\s+de\s+atencion)\b/, tema: 'el horario del local' },
 ];
 
+// Cómo se eligen las butacas. No es una pregunta fuera de alcance —eso son los
+// precios o la dulcería—: es sobre cómo funciona esto, y tiene una respuesta
+// corta y cierta. Alguien que ya tenía su función escribió «quiero yo elegir
+// las butacas» y recibió «no entendí «elegir»» y la cartelera entera encima.
+const BUTACAS_PROPIAS =
+  /\b(elegir|elijo|escoger|escojo|seleccionar|selecciono|cambiar|cambio|mover|marcar)\s+(las?\s+|los\s+|mis\s+|otras?\s+|otros?\s+|el\s+|un\s+)*(butacas?|asientos?|sitios?|lugares?)\b|\bno\s+quiero\s+(esas?|esos?)\s+(butacas?|asientos?)\b|\b(butacas?|asientos?)\s+(yo|propi[ao]s?)\b|\byo\s+(las?|los)\s+(elijo|escojo)\b/;
+
 // Saludos y ruido: no son una consulta, y tratarlos como título fue de donde
 // salió «hola» no está en cartelera.
 const SALUDO =
@@ -901,6 +908,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(district ? tokens(district) : []),
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
     ...tokens(dichoGenero),
+    ...(BUTACAS_PROPIAS.test(t) ? tokens(BUTACAS_PROPIAS.exec(t)?.[0] ?? '') : []),
     ...(lugarAjeno ? tokens(lugarAjeno) : []),
     ...(preguntaPais ? tokens(PREGUNTA_PAIS.exec(t)?.[0] ?? '') : []),
     ...tokens(formato ? (formato.pide.exec(norm(text))?.[0] ?? '') : ''),
@@ -942,6 +950,9 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
         norm(text),
       ),
     fuera: FUERA.find((f) => f.pide.test(norm(text)))?.tema ?? null,
+    // Quiere elegir sus butacas: se le dice dónde se eligen, sin perder lo que
+    // ya había elegido.
+    butacasPropias: BUTACAS_PROPIAS.test(t),
     // Acá sólo vive la cartelera peruana. Decirlo es lo único honesto, y es
     // mejor que pedir por tercera vez un distrito que la persona no tiene.
     otroPais: lugarAjeno ? FUERA_DEL_PERU[lugarAjeno] : null,

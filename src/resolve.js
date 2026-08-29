@@ -174,6 +174,23 @@ const REGLAS = [
   },
 
   {
+    // Las butacas se eligen en Cineplanet, no acá: lo que mostramos es una
+    // sugerencia sobre el mapa real. Decirlo cuesta una línea, y no decirlo
+    // costó una conversación entera — «no entendí «elegir»» y la cartelera
+    // encima de alguien que ya tenía su función.
+    nombre: 'quien-elige-las-butacas',
+    cuando: ({ fresco }) => fresco.butacasPropias,
+    responde: ({ intent }) => ({
+      estado: 'falta',
+      pregunta:
+        'Las butacas que te muestro son una sugerencia: al pulsar «Ir a comprar» se abre el mapa en Cineplanet y ahí eliges las que quieras. Acá no se reserva nada. ¿Te busco otra función?',
+      intent,
+      // No se pierde nada de lo que ya había elegido.
+      contexto: recordar(intent),
+    }),
+  },
+
+  {
     // Cineplanet no está sólo en el Perú y la gente lo sabe: el 19 de agosto dos
     // personas preguntaron por Chile el mismo día, y a una se le contestó "no
     // entendí «chile»" y se le volvió a pedir un distrito, tres veces. Preguntar

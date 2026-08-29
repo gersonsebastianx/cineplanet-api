@@ -328,6 +328,22 @@ Dos correcciones de eso:
   dudar, dejando «lindo» y «méxico» sin explicar. Ahora eso baja la certeza a
   «¿te refieres a…?», que es la misma regla que ya valía para las sedes.
 
+### Preguntar quién elige las butacas (2026-08-28)
+
+Alguien con su función ya elegida —La Odisea, CP San Borja, 21:30, dos
+entradas— escribió «quiero yo elegir las butacas». La respuesta fue «No entendí
+«elegir»» y la cartelera entera de la sede encima.
+
+Dos errores en uno: no entender una pregunta que sí tiene respuesta, y tirar por
+la borda lo que la persona ya había elegido. No es una consulta fuera de alcance
+—eso son los precios o la dulcería—: es sobre cómo funciona esto. El mapa que
+mostramos es una sugerencia; las butacas se eligen en Cineplanet al pulsar el
+botón, y acá no se reserva nada. Decirlo cuesta una línea.
+
+Ahora se reconoce la familia entera —«puedo escoger mis asientos», «no quiero
+esas butacas», «quiero cambiar los asientos»— y la respuesta conserva la función:
+el turno siguiente sigue hablando de la misma película en la misma sede.
+
 ### La fricción más repetida: preguntar dónde, sin botones
 
 En una semana: 30 conversaciones, 127 turnos, 56 llegaron a una función. De los

@@ -138,3 +138,29 @@ test('un lugar que empata entre dos sedes las ofrece, no adivina una', async (t)
     }: ${r.pregunta}`,
   );
 });
+
+// Del 28 de agosto: alguien ya tenía su función —película, sede, hora y dos
+// entradas— y escribió «quiero yo elegir las butacas». Le contestamos «no
+// entendí «elegir»» y le mostramos la cartelera entera, tirando por la borda lo
+// que ya había elegido. No es una pregunta fuera de alcance: es sobre cómo
+// funciona esto, y tiene una respuesta corta y cierta.
+test('preguntar por elegir las butacas se contesta, no se lista la cartelera', async () => {
+  for (const frase of [
+    'quiero yo elegir las butacas',
+    'puedo escoger mis asientos?',
+    'no quiero esas butacas',
+    'quiero cambiar los asientos',
+  ]) {
+    const r = await resolve(frase);
+    const d = r.pregunta ?? r.mensaje ?? '';
+    assert.ok(!/no entend/i.test(d), `«${frase}» → ${d}`);
+    assert.match(d, /elig|escog/i, `«${frase}» no explica quién elige: ${d}`);
+  }
+});
+
+// Y no puede costarle la conversación: lo que ya había elegido sigue ahí.
+test('esa pregunta no borra la función que ya se tenía', async () => {
+  const uno = await resolve(enCartelera.title);
+  const dos = await resolve('quiero yo elegir las butacas', { contexto: uno.contexto });
+  assert.equal(dos.contexto.movieId, uno.contexto.movieId);
+});
