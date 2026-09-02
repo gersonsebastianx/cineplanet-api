@@ -43,6 +43,9 @@ export const STOP = new Set(
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
     // Posesivos: "mi" coincidía con "Mi Vecino Totoro" y con media cartelera.
     'mi mis tu tus su sus nuestro nuestra nuestros nuestras ' +
+    // Pronombre: "yo" colisionaba con "Yo, Narciso" y borraba la película que
+    // ya se había elegido apenas alguien preguntaba "quiero yo elegir las butacas".
+    'yo ' +
     // "Vi que en Cineplanet Magdalena sí estaba": nada de eso es un título.
     'cineplanet cineplanets vi vimos creo parece dice decia estaba estaban ' +
     // Pedir una recomendación no es nombrar una película.
