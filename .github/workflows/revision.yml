@@ -1,0 +1,48 @@
+# Revisión automática, dos veces al día, sin depender de ninguna computadora
+# encendida. No razona ni arregla —eso lo hace el agente—: es la red que avisa
+# cuando algo se rompió solo.
+#
+# Y se rompe solo más seguido de lo que parece: la cartelera cambia sin avisar y
+# ya hubo tres casos en diez días —Toy Story y Moana salieron, y con ellos se
+# cayeron pruebas que nadie tocó—.
+
+name: Revisión
+
+on:
+  schedule:
+    # 09:00 y 21:00 en Lima (UTC-5). GitHub programa en UTC.
+    - cron: '0 14 * * *'
+    - cron: '0 2 * * *'
+  workflow_dispatch:
+  push:
+    branches: [main]
+
+jobs:
+  revisar:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      # Sin dependencias: no hay nada que instalar.
+
+      - name: ¿Cineplanet está respondiendo?
+        id: cineplanet
+        run: node test/cineplanet-vivo.mjs
+
+      - name: Pruebas
+        if: steps.cineplanet.outputs.vivo == 'true'
+        run: npm test
+
+      # Recorre las 43 sedes buscando bucles, callejones, afirmaciones
+      # inventadas y enlaces que no corresponden a la función que anuncian.
+      - name: Barrido
+        if: steps.cineplanet.outputs.vivo == 'true'
+        run: npm run barrido
+
+      - name: Cineplanet no respondía
+        if: steps.cineplanet.outputs.vivo != 'true'
+        run: echo "::notice::Revisión saltada: Cineplanet no responde. No es un fallo de este repositorio."

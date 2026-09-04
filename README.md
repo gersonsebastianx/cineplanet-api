@@ -256,6 +256,13 @@ npm test
 npm run barrido
 ```
 
+Las dos corren solas en GitHub a las 9:00 y 21:00 de Lima
+([`.github/workflows/revision.yml`](.github/workflows/revision.yml)), sin
+depender de que ninguna computadora esté encendida. Antes de evaluar nada, la
+revisión pregunta si Cineplanet está respondiendo: si su plataforma está caída
+—pasa seguido— se salta y lo dice, en vez de pintarse de rojo por algo que no
+rompimos.
+
 `npm test` son las pruebas de siempre. El barrido es otra cosa y tarda un par de
 minutos: recorre las 43 sedes y todas las películas con funciones buscando las
 cuatro maneras de romper una conversación —bucles, callejones, afirmaciones
