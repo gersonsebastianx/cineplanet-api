@@ -1,19 +1,21 @@
 # Revisión automática, dos veces al día, sin depender de ninguna computadora
-# encendida. No razona ni arregla —eso lo hace el agente—: es la red que avisa
-# cuando algo se rompió solo.
+# encendida. No razona ni arregla —eso es trabajo del agente—: es la red que
+# avisa cuando algo se rompió solo, que pasa más seguido de lo que parece.
+# En diez días la cartelera se llevó por delante dos películas y con ellas
+# pruebas que nadie había tocado.
 #
-# Y se rompe solo más seguido de lo que parece: la cartelera cambia sin avisar y
-# ya hubo tres casos en diez días —Toy Story y Moana salieron, y con ellos se
-# cayeron pruebas que nadie tocó—.
+# La clave `on` va entrecomillada a propósito: sin comillas, YAML la lee como
+# el booleano `true` y GitHub se queda sin disparadores — el workflow arranca y
+# muere en cero segundos, con el nombre del archivo en vez del suyo.
 
 name: Revisión
 
-on:
+"on":
+  # 09:00 y 21:00 en Lima (UTC-5). GitHub programa en UTC.
   schedule:
-    # 09:00 y 21:00 en Lima (UTC-5). GitHub programa en UTC.
-    - cron: '0 14 * * *'
-    - cron: '0 2 * * *'
-  workflow_dispatch:
+    - cron: "0 14 * * *"
+    - cron: "0 2 * * *"
+  workflow_dispatch: {}
   push:
     branches: [main]
 
@@ -25,11 +27,12 @@ jobs:
 
       - uses: actions/setup-node@v4
         with:
-          node-version: '22'
+          node-version: "22"
 
       # Sin dependencias: no hay nada que instalar.
-
-      - name: ¿Cineplanet está respondiendo?
+      # Antes de evaluar nada, se pregunta si Cineplanet está en pie: un build
+      # rojo por algo que no rompimos enseña a ignorar el rojo.
+      - name: Cineplanet responde
         id: cineplanet
         run: node test/cineplanet-vivo.mjs
 
@@ -43,6 +46,6 @@ jobs:
         if: steps.cineplanet.outputs.vivo == 'true'
         run: npm run barrido
 
-      - name: Cineplanet no respondía
+      - name: Cineplanet no respondia
         if: steps.cineplanet.outputs.vivo != 'true'
-        run: echo "::notice::Revisión saltada: Cineplanet no responde. No es un fallo de este repositorio."
+        run: echo "::notice::Revision saltada porque Cineplanet no responde. No es un fallo de este repositorio."
