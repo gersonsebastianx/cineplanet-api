@@ -237,11 +237,14 @@ const REGLAS = [
         const conLaPelicula = cinemaList.filter((c) => ids.has(c.id));
         if (conLaPelicula.length) candidatas = conLaPelicula;
       }
-      const cerca = donde
-        ? nearest(candidatas, donde, 4).filter(
-            (c) => c.id !== previo?.cinema?.id && c.id !== intent.cinema?.id,
-          )
-        : [];
+      const otras = (lista) =>
+        donde
+          ? nearest(lista, donde, 5).filter(
+              (c) => c.id !== previo?.cinema?.id && c.id !== intent.cinema?.id,
+            )
+          : [];
+
+      const cerca = otras(candidatas);
       if (cerca.length) {
         return {
           estado: 'elige-cine',
@@ -252,9 +255,42 @@ const REGLAS = [
           contexto: recordar({ ...intent, cinema: null }),
         };
       }
+
+      // No hay otra sede **con esa película**: sólo se da donde ya estaba. Eso
+      // hay que decirlo —callarlo era contestar «¿en qué distrito?» a quien
+      // acababa de pulsar «Cambiar de cine»— y aun así ofrecer a dónde ir, con
+      // la película soltada, porque lo que se pidió fue cambiar de sede.
+      const sinLaPelicula = otras(cinemaList);
+      if (intent.movie && sinLaPelicula.length) {
+        return {
+          estado: 'elige-cine',
+          pregunta: `${intent.movie.title} sólo se da en ${intent.cinema?.name ?? previo?.cinema?.name}. En estas otras sedes dan otras cosas:`,
+          opciones: sinLaPelicula
+            .slice(0, 3)
+            .map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+          intent,
+          // Se suelta también la película: se acaba de decir que ahí no está.
+          contexto: recordar({ ...intent, cinema: null, movie: null }),
+        };
+      }
+      if (sinLaPelicula.length) {
+        return {
+          estado: 'elige-cine',
+          pregunta: '¿A cuál prefieres ir?',
+          opciones: sinLaPelicula
+            .slice(0, 3)
+            .map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+          intent,
+          contexto: recordar({ ...intent, cinema: null }),
+        };
+      }
+      // Sin saber dónde está la persona no hay cercanía que calcular: se
+      // pregunta, pero con las ciudades a un toque.
+      const ciudades = ciudadesPrincipales(cinemaList);
       return {
-        estado: 'falta',
-        pregunta: '¿En qué distrito o ciudad? Te digo qué cines hay ahí.',
+        estado: ciudades.length ? 'elige-cine' : 'falta',
+        pregunta: '¿En qué ciudad o distrito? Te digo qué cines hay ahí.',
+        opciones: ciudades.length ? ciudades.map((c) => ({ nombre: c })) : undefined,
         intent,
         contexto: recordar({ ...intent, cinema: null }),
       };

@@ -25,6 +25,12 @@ const TYPES = {
   '.css': 'text/css; charset=utf-8',
   '.js': 'text/javascript; charset=utf-8',
   '.svg': 'image/svg+xml',
+  // La imagen de la vista previa y los iconos: sin su tipo salían como
+  // octet-stream y ni X ni WhatsApp los muestran.
+  '.png': 'image/png',
+  '.jpg': 'image/jpeg',
+  '.webp': 'image/webp',
+  '.ico': 'image/x-icon',
 };
 
 // Una consulta dispara varias llamadas a Cineplanet; conviene no exigirles de más.

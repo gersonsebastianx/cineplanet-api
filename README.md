@@ -118,6 +118,10 @@ cabeceras CORS, así que un frontend puro no puede llamarla.
 
 **En línea: [cineplanet-api.vercel.app](https://cineplanet-api.vercel.app)**
 
+El enlace está pensado para pasarlo por chat, así que lleva su propia vista
+previa: título, descripción e imagen ([`public/og.png`](public/og.png)). Sin
+eso, X y WhatsApp muestran una tarjeta vacía con el dominio y nada más.
+
 ### Ponerla en línea
 
 ```bash
@@ -149,6 +153,16 @@ Por la misma razón el saludo nombra un género y no una película, y lo que uno
 mismo buscó se olvida a las dos semanas o en cuanto deja de existir.
 
 Dos cosas que el servidor necesita en producción y que no se notan en local:
+
+Cada consulta dispara varias llamadas a Cineplanet, así que hay un límite: 40
+por minuto **por conversación**, no por IP. En el Perú media ciudad navega por
+datos móviles detrás de la misma IP de operadora, y contar por IP el día de un
+lanzamiento sería bloquear a desconocidos que no hicieron nada. Lo que llega sin
+sesión —un script, un monitor— sí se cuenta por IP.
+
+Y la bitácora no hace esperar a nadie: escribe en una hoja de Google, y si
+Google tarda, ese retraso lo pagaría quien está buscando su función. Tiene un
+plazo corto; si no llega, la respuesta sale igual.
 
 - **`TRUST_PROXY=1`.** Detrás de un proxy, `remoteAddress` es la del proxy y es
   la misma para todo el mundo: el límite de consultas se agotaría entre

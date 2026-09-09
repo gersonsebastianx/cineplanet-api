@@ -4,6 +4,32 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>¿Qué quieres ver?</title>
+
+<!-- Cómo se ve el enlace cuando alguien lo comparte. Sin esto, en X y en
+     WhatsApp sale una tarjeta vacía: sólo el dominio, sin decir qué es. Y este
+     enlace está pensado justo para eso, para pasarlo por chat. -->
+<meta name="description" content="Escribe la película, el cine y la hora como se lo dirías a un amigo. Te doy la función, el mapa de butacas con dos asientos elegidos y el enlace directo para comprar en Cineplanet Perú.">
+<link rel="canonical" href="https://cineplanet-api.vercel.app/">
+<link rel="icon" href="/favicon.svg" type="image/svg+xml">
+<link rel="apple-touch-icon" href="/icono.png">
+<meta name="theme-color" content="#f1ecea" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f0d0c" media="(prefers-color-scheme: dark)">
+
+<meta property="og:type" content="website">
+<meta property="og:locale" content="es_PE">
+<meta property="og:site_name" content="¿Qué quieres ver?">
+<meta property="og:title" content="¿Qué quieres ver? · Funciones y butacas de Cineplanet">
+<meta property="og:description" content="Escríbelo como se lo dirías a un amigo y te doy la función, el mapa de butacas y el enlace para comprar. 43 cines del Perú.">
+<meta property="og:url" content="https://cineplanet-api.vercel.app/">
+<meta property="og:image" content="https://cineplanet-api.vercel.app/og.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="630">
+<meta property="og:image:alt" content="«quiero ver algo de terror hoy en la noche en Salaverry, somos 3» — y la web devuelve la función con sus butacas.">
+
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:title" content="¿Qué quieres ver? · Funciones y butacas de Cineplanet">
+<meta name="twitter:description" content="Escríbelo como se lo dirías a un amigo y te doy la función, el mapa de butacas y el enlace para comprar. 43 cines del Perú.">
+<meta name="twitter:image" content="https://cineplanet-api.vercel.app/og.png">
 <style>
   /* El color aparece una sola vez, en el gradiente. Todo lo demás es papel,
      tinta y una línea de un pelo. Es lo que hace que el gradiente se note. */
@@ -136,7 +162,10 @@
   .avisos{margin-top:14px;padding:9px 12px;border-radius:12px;border:1px dashed var(--line);
     font-size:12.5px;color:var(--ink-2);letter-spacing:-.005em;text-align:center}
   /* Discreto a propósito: importa poco hasta que la sede es la equivocada. */
-  .cambiar{border:0;background:none;padding:0 2px;font:inherit;color:var(--ink);
+  /* Con el pulgar, 19 píxeles de alto no se aciertan: era el objetivo táctil
+     más chico de la tarjeta, y es la única salida cuando la sede no sirve. */
+  .cambiar{border:0;background:none;padding:8px 6px;margin:-8px -6px;font:inherit;
+    min-height:38px;color:var(--ink);
     text-decoration:underline;text-underline-offset:3px;cursor:pointer}
   .cambiar:hover{color:var(--rose)}
   .sedes{margin-top:10px;display:flex;gap:8px;flex-wrap:wrap;justify-content:center}
