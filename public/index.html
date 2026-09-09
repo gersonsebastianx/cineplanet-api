@@ -694,6 +694,12 @@ ejemplos.addEventListener('click', (e) => {
 
 const HISTORIAL = 'cineplanet:historial';
 
+// El último recurso, y lo que se muestra mientras llegan los buenos: no nombran
+// ninguna película ni ningún cine, así que no pueden caducar. Una frase escrita
+// a mano deja de funcionar el día que esa película sale de cartelera, y sería
+// lo primero que ve alguien que llega por primera vez.
+const PORDEFECTO = ['¿Qué películas hay hoy?', 'Quiero ir al cine mañana'];
+
 // Una película dura semanas en cartelera, no meses: pasado ese plazo, ofrecer
 // lo que uno buscó es ofrecer una puerta cerrada.
 const VIGENCIA_MS = 14 * 24 * 3600 * 1000;
@@ -736,9 +742,25 @@ function olvidarBusqueda(texto) {
   guardarHistorial(leerHistorial().filter((x) => x.texto !== texto));
 }
 
+/** Dibuja la fila de ejemplos. Se usa dos veces: al instante y al llegar. */
+function dibujarSugerencias(lista) {
+  ejemplos.replaceChildren();
+  for (const t of lista) {
+    const b = el('button', null, t);
+    b.type = 'button';
+    ejemplos.append(b);
+  }
+}
+
 async function pintarSugerencias() {
   let lista = leerHistorial().slice(0, 3).map((x) => x.texto);
   if (!lista.length) {
+    // Los ejemplos buenos —los de la cartelera de hoy— tardan unos segundos:
+    // hay que leer la bitácora y comprobar que cada uno funcione. Mientras
+    // tanto se pintan los de siempre, que nunca caducan, así el primer
+    // pantallazo nunca sale con la fila vacía. Cuando llegan los buenos, se
+    // reemplazan sin que nadie lo note.
+    dibujarSugerencias(PORDEFECTO);
     try {
       const res = await fetch('/api/populares');
       lista = (await res.json()).populares ?? [];
@@ -746,23 +768,12 @@ async function pintarSugerencias() {
       lista = [];
     }
   }
-  // Lo que busca la gente manda, pero un solo botón se ve pobre: se completa
-  // hasta dos, sin repetir lo que ya está. Los ejemplos con título y sede los
-  // arma el servidor con la cartelera del día; estos dos son el último recurso
-  // —si hasta eso falló— y por eso no nombran ninguna película ni ningún cine:
-  // una frase escrita a mano caduca el día que esa película sale de cartelera,
-  // y sería lo primero que ve alguien que llega por primera vez.
-  const PORDEFECTO = ['¿Qué películas hay hoy?', 'Quiero ir al cine mañana'];
+
   for (const ej of PORDEFECTO) {
     if (lista.length >= 2) break;
     if (!lista.some((t) => t.toLowerCase() === ej.toLowerCase())) lista.push(ej);
   }
-  ejemplos.replaceChildren();
-  for (const t of lista) {
-    const b = el('button', null, t);
-    b.type = 'button';
-    ejemplos.append(b);
-  }
+  dibujarSugerencias(lista);
 }
 pintarSugerencias();
 </script>
