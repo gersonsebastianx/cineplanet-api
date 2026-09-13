@@ -11,7 +11,7 @@
 
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { leerPlan, bestBlocks, SalaAgotada } from '../src/seatmap.js';
+import { leerPlan, bestBlocks, SalaAgotada, cabida } from '../src/seatmap.js';
 import { buyLink } from '../src/api.js';
 
 // ── Un plano como los que manda Cineplanet ──────────────────────────────────
@@ -248,4 +248,43 @@ test('una conversación llega hasta el enlace con butacas que existen', async ()
     assert.ok(butaca.libre, `${id} se sugiere pero está ocupada`);
   }
   assert.ok(card.mapa.libres <= card.mapa.total);
+});
+
+// ── ¿Cabe el grupo? ─────────────────────────────────────────────────────────
+//
+// Del 13 de septiembre: la web ofreció una función de las 18:00 con botón de
+// comprar y el aviso «sólo quedan butacas sueltas». La sala tenía **cero**
+// butacas libres de 112. Cineplanet no la marcó como agotada con su código: la
+// devolvió como un plano normal, con todo ocupado, y eso se colaba. La persona
+// pidió 6 entradas, vio un mapa entero en rojo y dijo «no» cinco veces.
+
+test('una sala sin ninguna butaca libre está llena, aunque Cineplanet no lo diga', () => {
+  const llena = leerPlan(plano([['B', 'xxxxxx'], ['A', 'xxxxxx']]));
+  assert.equal(cabida(llena, 2), 'llena');
+  assert.equal(cabida(llena, 1), 'llena');
+});
+
+test('menos butacas libres que personas es no tener lugar', () => {
+  // El caso de las 22:20: una sola butaca libre, para un grupo de 6.
+  const una = leerPlan(plano([['B', 'xxxxxx'], ['A', 'xx.xxx']]));
+  assert.equal(cabida(una, 6), 'llena');
+  assert.equal(cabida(una, 1), 'juntas');
+});
+
+test('si caben pero separados, se dice sueltas', () => {
+  const salteadas = leerPlan(plano([['B', '.x.x.x'], ['A', 'x.x.x.']]));
+  assert.equal(cabida(salteadas, 6), 'sueltas');
+  assert.equal(cabida(salteadas, 1), 'juntas');
+});
+
+test('un bloque contiguo del tamaño del grupo es juntas', () => {
+  const buena = leerPlan(plano([['B', 'x......x'], ['A', 'xxxxxxxx']]));
+  assert.equal(cabida(buena, 6), 'juntas');
+});
+
+test('las sillas de ruedas no cuentan como lugar para un grupo', () => {
+  // Son para quien las necesita: sumarlas daría "caben" donde no caben.
+  const conRuedas = leerPlan(plano([['A', 'rr..xx']]));
+  assert.equal(cabida(conRuedas, 4), 'llena');
+  assert.equal(cabida(conRuedas, 2), 'juntas');
 });

@@ -148,6 +148,27 @@ export function bestBlocks(map, size = 2, limit = 5) {
   return elegidos;
 }
 
+/**
+ * ¿Sirve esta función para un grupo de `size` personas?
+ *
+ *   'juntas'   hay al menos un bloque contiguo de ese tamaño
+ *   'sueltas'  hay butacas para todos, pero separadas
+ *   'llena'    no hay butacas libres para todos
+ *
+ * Existe porque Cineplanet no siempre avisa que una sala está agotada: a veces
+ * devuelve un plano normal con todas las butacas ocupadas. La web ofreció así
+ * una función con cero butacas libres de 112 —con botón de comprar y el aviso
+ * «sólo quedan butacas sueltas»— a alguien que pedía 6 entradas.
+ *
+ * Las sillas de ruedas no cuentan: son para quien las necesita, y sumarlas
+ * diría que el grupo cabe donde no cabe.
+ */
+export function cabida(map, size = 2) {
+  const libres = map.rows.flatMap((r) => r.seats).filter((s) => s.free && !s.accessible).length;
+  if (libres < size) return 'llena';
+  return bestBlocks(map, size, 1).length ? 'juntas' : 'sueltas';
+}
+
 /** Página HTML autocontenida con el mapa, en los colores de Cineplanet. */
 export function renderHtml(map, meta = {}) {
   const head = [meta.movie, meta.cinemaName, meta.screen || map.screen, meta.date, meta.time]

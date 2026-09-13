@@ -360,6 +360,43 @@ película sí se da, a un toque, y de ahí a la función son dos más. Igual «�
 películas hay?», que contestaba "dime el nombre de la película" a quien acababa
 de pedir la lista: ahora pregunta la ciudad, con botones.
 
+## La semana del lanzamiento (2026-09-09 al 13)
+
+El enlace salió en X y en Instagram. Tres conversaciones en cuatro días. Poco
+tráfico, pero una de esas conversaciones destapó el peor fallo que ha tenido el
+camino de compra.
+
+**Se ofrecía una sala llena, con botón de comprar.** Alguien pidió La Noche del
+Demonio en CP Trujillo Centro para 6 personas. La función de las 18:00 tenía
+**cero butacas libres de 112**, y la de las 22:20, una. La web ofreció igual la
+de las 18:00 con el aviso «sólo quedan butacas sueltas». Cineplanet no la marcó
+como agotada con su código de error: devolvió el plano normal con todo ocupado,
+y eso se colaba. La persona vio un mapa entero en rojo y escribió, en orden:
+«¿qué película tiene para 6 juntas en una sola fila?», «no, quiero otra
+película», «no me queda claro qué asiento hay» — y recibió la misma tarjeta, o la
+cartelera entera, cada vez. Cada mensaje era la reacción correcta a una sala
+llena.
+
+Ahora una sala sin lugar para el grupo no se ofrece nunca, y cuando la película
+pedida no tiene lugar se dice y se muestra lo que sí: «Con 6 butacas juntas en
+CP Trujillo Centro hoy: Oasis, 21:20». Si una opción sólo tiene butacas
+separadas, lo dice al lado; no se promete «juntas» donde no lo son.
+
+**Lo que esa conversación dejó a la vista, además:** «otra película» no se
+entendía (sí «otro cine»); «¿qué asientos hay?» recibía «no entendí»; y la coma
+es lo único que separa «No, quiero otra película» de «No quiero otra película»,
+pero el intérprete la borraba antes de mirar.
+
+**La otra conversación** pidió «spiderman en cp costanera». No existe CP
+Costanera y la web no lo dijo: se quedó con la sede anterior. Y «spiderman», que
+a secas se reconoce, dejaba de reconocerse con que hubiera una palabra más en el
+mensaje.
+
+**Y una regresión atrapada antes de subir:** al arreglar lo anterior, «la odisea
+en real plaza» pasó a contestar «no ubico real plaza entre los cines» — falso,
+hay seis. Un lugar que coincide con varias sedes es ambiguo, no desconocido, y
+ahora se pregunta cuál.
+
 ### Una lección aparte: las pruebas también caducan
 
 Dos veces en el mismo día se puso roja una prueba que nadie había tocado, porque

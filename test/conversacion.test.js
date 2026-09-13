@@ -111,6 +111,13 @@ const NIVELES = {
     'era',
     // Del 20 de agosto: una película que no tenemos, con un país en el nombre.
     'lindo méxico mágico',
+    // Del lanzamiento, septiembre: un cine que no existe, y un grupo de 6 que
+    // dijo «no» cinco veces seguidas frente a una sala llena.
+    'quiero ver spiderman en cp costanera',
+    'No, que película tiene para 6 personas juntas en una sola fila',
+    'No, quiero otra película',
+    'No me queda claro que asiento hay',
+    'No quiero otra película',
   ],
 };
 

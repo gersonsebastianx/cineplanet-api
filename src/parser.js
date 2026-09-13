@@ -263,7 +263,8 @@ const FORMATOS = [
 ];
 const IDIOMAS = [
   { pide: /\bdoblad[ao]s?\b|\ben\s+espanol\b|\bespanol\b/, valor: 'DOBLADA', dice: 'doblada' },
-  { pide: /\bsubtitulad[ao]s?\b|\bsubtitulos?\b|\bsubs\b/, valor: 'SUBTITULAD', dice: 'subtitulada' },
+  // «En inglés» es audio original: en Cineplanet eso es la versión subtitulada.
+  { pide: /\bsubtitulad[ao]s?\b|\bsubtitulos?\b|\bsubs\b|\ben\s+ingles\b|\bversion\s+original\b|\bidioma\s+original\b/, valor: 'SUBTITULAD', dice: 'subtitulada' },
 ];
 
 /** Fecha de hoy en horario de Lima, como YYYY-MM-DD. */
@@ -507,12 +508,20 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
         list.some((q) => !COMUNES.has(q) && q.length >= 5 && closeEnough(q, w)),
     );
     const haveGlued = have.join('');
+    // "spiderman" por "Spider man Un nuevo día": el título escrito todo junto.
+    // Antes sólo valía si era lo único que quedaba del mensaje; bastaba una
+    // palabra más —«quiero ver spiderman en cp costanera»— para que no lo
+    // encontrara. Ahora vale también si **una sola palabra** de lo escrito es el
+    // comienzo pegado del título, y lo bastante larga para no ser casualidad.
+    const unaPalabraPegada = list.some(
+      (q) => q.length >= 7 && !COMUNES.has(q) && haveGlued.startsWith(q) && q !== have[0],
+    );
     const pegado =
       !exactos.length &&
       !aprox.length &&
       have.length > 1 &&
       glued.length >= 6 &&
-      (glued.includes(haveGlued) || haveGlued.startsWith(glued));
+      (glued.includes(haveGlued) || haveGlued.startsWith(glued) || unaPalabraPegada);
 
     // Evidencia positiva: sin esto no hay candidato, por muy alto que puntúe.
     // Un parecido suelto sólo vale si la palabra es larga y distintiva.
@@ -719,6 +728,24 @@ const FUERA = [
 const BUTACAS_PROPIAS =
   /\b(elegir|elijo|escoger|escojo|seleccionar|selecciono|cambiar|cambio|mover|marcar)\s+(las?\s+|los\s+|mis\s+|otras?\s+|otros?\s+|el\s+|un\s+)*(butacas?|asientos?|sitios?|lugares?)\b|\bno\s+quiero\s+(esas?|esos?)\s+(butacas?|asientos?)\b|\b(butacas?|asientos?)\s+(yo|propi[ao]s?)\b|\byo\s+(las?|los)\s+(elijo|escojo)\b/;
 
+// «Otra película»: igual que «otro cine», es pedir cambiar y no nombrar nada.
+// Sin entenderlo, alguien con su tarjeta escribió «No, quiero otra película» y
+// recibió la misma tarjeta, dos veces.
+const OTRA_PELICULA =
+  /\b(otra|otras)\s+(pelicula|peli|cosa|opcion)s?\b|\bcambiar\s+(de\s+)?(pelicula|peli)\b|\b(esa|esta)\s+(pelicula|peli)\s+no\b/;
+// Pero la negación da vuelta el sentido: «no quiero otra película» es quedarse
+// con la misma.
+const NO_OTRA = /\bno\s+(quiero|busco|me\s+interesa|necesito)\s+(otra|otras)\b/;
+
+/** Minúsculas y sin tildes, pero con la puntuación: «no, quiero» ≠ «no quiero». */
+const conPuntuacion = (s) =>
+  (s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
+
+// Qué butacas quedan: una pregunta sobre el mapa, no sobre la cartelera.
+// «No me queda claro qué asiento hay» recibía «no entendí» y la lista entera.
+const BUTACAS_LIBRES =
+  /\b(que|cuales|cuantas?|cuantos)\s+(asientos?|butacas?|lugares?)\s+(hay|quedan|libres|tiene|tienen)\b|\bno\s+(me\s+)?(queda|quedo|entiendo|veo)\s+(claro\s+|bien\s+)?(que|cuales|los|las)?\s*(asientos?|butacas?)\b/;
+
 // Saludos y ruido: no son una consulta, y tratarlos como título fue de donde
 // salió «hola» no está en cartelera.
 const SALUDO =
@@ -794,6 +821,14 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     /\b(somos|vamos|seremos|iremos|seriamos)\s+\d{1,2}\b/.test(t);
   const numeroSuelto = date == null && from == null && to == null && !hayCantidad;
   const used = new Set(cinemaHit?.hits ?? []);
+  // Tampoco las que ya explica una pregunta sobre la conversación misma: «qué
+  // asientos quedan libres» encontraba la película «Queen Budapest» —quedan a
+  // dos letras de queen— y la tarjeta cambiaba de película por una pregunta
+  // sobre butacas.
+  for (const intencion of [BUTACAS_PROPIAS, BUTACAS_LIBRES, OTRA_PELICULA, NO_OTRA]) {
+    const dicho = intencion.exec(t)?.[0];
+    if (dicho) for (const w of tokens(dicho)) used.add(w);
+  }
   const rest = tokens(text)
     .filter(
       (w) =>
@@ -819,6 +854,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Si nombró un lugar tras "en" y no es sede, distrito ni ciudad conocida, hay
   // que decir que no se conoce en vez de responder con cines de otra ciudad.
   let lugarDesconocido = null;
+  let sedesQueCoinciden = null;
   if (!cinemaHit && !district && !ciudadSinSede) {
     const usadas = new Set([
       ...(movieHit?.item ? tokens(movieHit.item.title) : []),
@@ -827,9 +863,34 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     const m = /\ben\s+(?:el\s+|la\s+|los\s+|las\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i.exec(text);
     if (m) {
       const dicho = tokens(m[1]).filter((w) => !usadas.has(w));
-      if (dicho.length) lugarDesconocido = m[1].trim();
+      if (dicho.length) {
+        // «Real plaza» no es un lugar desconocido: está en el nombre de seis
+        // sedes. Decir «no ubico real plaza» es falso; lo cierto es que hay
+        // varias y hay que preguntar cuál.
+        const coinciden = cinemas.filter((c) => {
+          const suyas = new Set(tokens(c.name));
+          return dicho.every((w) => suyas.has(w));
+        });
+        if (coinciden.length > 1) sedesQueCoinciden = coinciden;
+        else lugarDesconocido = m[1].trim();
+      }
     }
   }
+  // Un cine nombrado como tal —«cp costanera», «cineplanet inventado»— que no
+  // es ninguno de los que existen. Es una señal mucho más firme que cualquier
+  // palabra suelta después de «en»: nadie escribe «cp una sola».
+  const cineDesconocido = (() => {
+    if (cinemaHit || sedesQueCoinciden) return null;
+    const m = /\b(?:cp|cineplanet)\s+([a-z]{3,}(?:\s+[a-z]{3,})?)/.exec(t);
+    if (!m) return null;
+    const dicho = tokens(m[1]);
+    if (!dicho.length) return null;
+    const existe = cinemas.some((c) => {
+      const suyas = new Set([...tokens(c.name), ...tokens(c.district ?? ''), ...tokens(c.city ?? '')]);
+      return dicho.some((w) => suyas.has(w));
+    });
+    return existe ? null : `CP ${m[1].replace(/\b\w/g, (c) => c.toUpperCase())}`;
+  })();
 
   // El título puede robarle palabras a la sede: "la piedra filosofal" se parece
   // a "Piura" y mandaba a alguien de San Miguel a otra ciudad. Con la película
@@ -907,11 +968,24 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(alias ? alias.dicho.split(' ') : []),
     ...(ciudadConSede ? norm(ciudadConSede.nombre).split(' ') : []),
     ...(movieHit?.item ? tokens(movieHit.item.title) : []),
+    // El título escrito todo junto también está explicado: sin esto «spiderman»
+    // quedaba como palabra suelta y bajaba la certeza de la propia película.
+    ...(movieHit?.item
+      ? tokens(text).filter((w) => w.length >= 6 && tokens(movieHit.item.title).join('').includes(w))
+      : []),
     ...(cinemaHit?.hits ?? []),
+    // Un cine nombrado con todas sus letras —«cp costanera»— que no existe
+    // también está explicado: es un cine, sólo que no lo tenemos.
+    ...(cineDesconocido ? tokens(cineDesconocido) : []),
+    // «Real plaza» nombra varias sedes a la vez: explicado, aunque falte elegir.
+    ...(sedesQueCoinciden ? tokens(/\ben\s+(?:el\s+|la\s+|los\s+|las\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i.exec(text)?.[1] ?? '') : []),
     ...(district ? tokens(district) : []),
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
     ...tokens(dichoGenero),
     ...(BUTACAS_PROPIAS.test(t) ? tokens(BUTACAS_PROPIAS.exec(t)?.[0] ?? '') : []),
+    ...(BUTACAS_LIBRES.test(t) ? tokens(BUTACAS_LIBRES.exec(t)?.[0] ?? '') : []),
+    ...(OTRA_PELICULA.test(t) ? tokens(OTRA_PELICULA.exec(t)?.[0] ?? '') : []),
+    ...(NO_OTRA.test(t) ? tokens(NO_OTRA.exec(t)?.[0] ?? '') : []),
     ...(lugarAjeno ? tokens(lugarAjeno) : []),
     ...(preguntaPais ? tokens(PREGUNTA_PAIS.exec(t)?.[0] ?? '') : []),
     ...tokens(formato ? (formato.pide.exec(norm(text))?.[0] ?? '') : ''),
@@ -944,7 +1018,9 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     // letras de `piura`, y se respondía sin dudar.
     cinemaConfianza: cinemaHit?.item ? (cinemaHit.confianza ?? 'alta') : null,
     // Varias sedes empatadas: quien resuelva debe preguntar, no elegir.
-    cinemaOptions: cinemaHit?.tied?.length > 1 ? cinemaHit.tied : null,
+    cinemaOptions:
+      cinemaHit?.tied?.length > 1 ? cinemaHit.tied : sedesQueCoinciden?.length > 1 ? sedesQueCoinciden : null,
+    cineDesconocido,
     district: district ?? ciudadSinSede ?? ciudadConSede?.nombre ?? null,
     // "otro cine" no es un lugar nuevo ni una película: es pedir cambiar de
     // sede. Sin entenderlo, la respuesta repetía el mismo cine y parecía sorda.
@@ -956,6 +1032,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     // Quiere elegir sus butacas: se le dice dónde se eligen, sin perder lo que
     // ya había elegido.
     butacasPropias: BUTACAS_PROPIAS.test(t),
+    butacasLibres: BUTACAS_LIBRES.test(t),
+    // La coma es lo único que separa «No, quiero otra película» de «No quiero
+    // otra película», y `norm` la borra: la negación se mira sobre el texto con
+    // su puntuación.
+    otraPelicula: OTRA_PELICULA.test(t) && !NO_OTRA.test(conPuntuacion(text)),
     // Acá sólo vive la cartelera peruana. Decirlo es lo único honesto, y es
     // mejor que pedir por tercera vez un distrito que la persona no tiene.
     otroPais: lugarAjeno ? FUERA_DEL_PERU[lugarAjeno] : null,

@@ -164,3 +164,74 @@ test('esa pregunta no borra la función que ya se tenía', async () => {
   const dos = await resolve('quiero yo elegir las butacas', { contexto: uno.contexto });
   assert.equal(dos.contexto.movieId, uno.contexto.movieId);
 });
+
+// Del 13 de septiembre: alguien con su tarjeta escribió «No, quiero otra
+// película» y recibió **la misma tarjeta**. Después «No quiero otra película»,
+// y otra vez la misma. «Otro cine» se entendía desde agosto; «otra película»,
+// no.
+test('«otra película» ofrece otras, no repite la misma', async (t) => {
+  const lista = await resolve(`que dan mañana en ${(await cinemas())[0].name}`);
+  if (lista.estado !== 'cartelera' || lista.opciones.length < 2) return t.skip('sin cartelera suficiente');
+  const op = lista.opciones[0];
+  const tarjeta = await resolve(op.nombre, { contexto: lista.contexto, elegido: { peliculaId: op.peliculaId } });
+
+  const r = await resolve('No, quiero otra película', { contexto: tarjeta.contexto });
+  assert.ok(r.opciones?.length, `no ofreció nada: ${r.pregunta ?? r.mensaje}`);
+  assert.ok(
+    r.opciones.every((o) => o.peliculaId !== op.peliculaId),
+    `volvió a ofrecer ${op.nombre}, que es justo la que no quiere`,
+  );
+  assert.equal(r.contexto.movieId, null, 'siguió recordando la película de la que se quería salir');
+});
+
+// Pero la negación da vuelta el sentido: «no quiero otra película» es seguir
+// con la misma.
+test('«no quiero otra película» conserva la que tenía', async () => {
+  const uno = await resolve(enCartelera.title);
+  const dos = await resolve('No quiero otra película', { contexto: uno.contexto });
+  assert.equal(dos.contexto.movieId, uno.contexto.movieId);
+});
+
+// «No me queda claro qué asientos hay» recibía «No entendí» y la cartelera
+// entera, dos veces seguidas. Es una pregunta sobre el mapa y tiene respuesta.
+test('preguntar qué asientos hay explica el mapa, sin perder la función', async () => {
+  const uno = await resolve(enCartelera.title);
+  for (const frase of ['No me queda claro que asiento hay', 'que asientos quedan libres?']) {
+    const r = await resolve(frase, { contexto: uno.contexto });
+    const d = r.pregunta ?? r.mensaje ?? '';
+    assert.ok(!/no entend/i.test(d), `«${frase}» → ${d}`);
+    assert.match(d, /libre/i, `«${frase}» no explica qué está libre: ${d}`);
+    assert.equal(r.contexto.movieId, uno.contexto.movieId);
+  }
+});
+
+// Del 10 de septiembre: alguien con CP Salaverry en la conversación escribió
+// «quiero ver spiderman en cp costanera». No existe CP Costanera, y la web no lo
+// dijo: se quedó con Salaverry y listó su cartelera, como si no hubiera nombrado
+// otro lugar.
+test('nombrar un cine que no existe no hereda el anterior', async () => {
+  const cs = await cinemas();
+  const primero = await resolve(`que dan mañana en ${cs[0].name}`);
+  const segundo = await resolve('quiero ver algo en cp inventadolandia', { contexto: primero.contexto });
+  const d = segundo.pregunta ?? segundo.mensaje ?? '';
+  assert.ok(!d.includes(cs[0].name) || /no ubico/i.test(d), `siguió en ${cs[0].name}: ${d}`);
+  assert.match(d, /no ubico/i, `no dijo que no conoce el lugar: ${d}`);
+});
+
+// Y en esa misma frase, «spiderman» —el título escrito todo junto— dejaba de
+// reconocerse con que hubiera una palabra más en el mensaje.
+test('un título escrito todo junto se reconoce aunque haya más palabras', async (t) => {
+  const { parse } = await import('../src/parser.js');
+  const ms = await movies();
+  const cs = await cinemas();
+  const compuesto = ms.find((m) => {
+    const w = m.title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/);
+    return w.length >= 3 && w[0].length >= 3 && w[1].length >= 3 && /^[a-z]+$/.test(w[0] + w[1]) && (w[0] + w[1]).length >= 7;
+  });
+  if (!compuesto) return t.skip('hoy no hay un título que se pueda escribir pegado');
+  const w = compuesto.title.toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').split(/\s+/);
+  const pegado = w[0] + w[1];
+  const r = parse(`quiero ver ${pegado} en cp inventadolandia`, { movies: ms, cinemas: cs });
+  assert.equal(r.movie?.id, compuesto.id, `«${pegado}» no encontró «${compuesto.title}»`);
+  assert.equal(r.movieConfianza, 'alta', 'la palabra pegada no puede contar como cabo suelto');
+});

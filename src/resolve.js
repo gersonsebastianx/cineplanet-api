@@ -6,7 +6,7 @@
 
 import { movies, cinemas, showtimes, nearest } from './catalog.js';
 import { edadDelCatalogo } from './api.js';
-import { seatMap, bestBlocks, SalaAgotada } from './seatmap.js';
+import { seatMap, bestBlocks, SalaAgotada, cabida } from './seatmap.js';
 import { parse, limaToday, generoPorNombre, tokens } from './parser.js';
 
 const MISSING = {
@@ -191,6 +191,24 @@ const REGLAS = [
   },
 
   {
+    // Qué butacas quedan. Es una pregunta sobre el mapa que ya está en pantalla,
+    // y se contestaba con «no entendí» y la cartelera entera — dos veces
+    // seguidas, a alguien que miraba una sala sin lugar para su grupo.
+    nombre: 'como-leer-el-mapa',
+    cuando: ({ fresco }) => fresco.butacasLibres,
+    responde: ({ intent }) => ({
+      estado: 'falta',
+      pregunta: intent.movie
+        ? 'En el mapa, las butacas en blanco están libres y las rojas ocupadas; las que te sugiero van marcadas en color. Si no ves ninguna marcada es que no quedan juntas para tu grupo: dime cuántos van y te busco una función con lugar.'
+        : intent.cinema
+          ? `Dime la película y te muestro el mapa de ${intent.cinema.name}: las butacas en blanco están libres y las rojas ocupadas.`
+          : 'Dime la película y el cine, y te muestro el mapa: las butacas en blanco están libres y las rojas ocupadas.',
+      intent,
+      contexto: recordar(intent),
+    }),
+  },
+
+  {
     // Cineplanet no está sólo en el Perú y la gente lo sabe: el 19 de agosto dos
     // personas preguntaron por Chile el mismo día, y a una se le contestó "no
     // entendí «chile»" y se le volvió a pedir un distrito, tres veces. Preguntar
@@ -294,6 +312,31 @@ const REGLAS = [
         intent,
         contexto: recordar({ ...intent, cinema: null }),
       };
+    },
+  },
+
+  {
+    // «Otra película» es pedir cambiar, igual que «otro cine». Sin entenderlo,
+    // la web devolvía la misma tarjeta a quien acababa de decir que no la quería.
+    nombre: 'otra-pelicula',
+    cuando: ({ fresco }) => fresco.otraPelicula && !fresco.movie,
+    responde: async (ctx) => {
+      const { intent } = ctx;
+      const actual = intent.movie;
+      // La misma consulta sin la película: la cartelera de la sede, o la
+      // pregunta por el lugar si todavía no hay sede.
+      const sinPelicula = { ...ctx, intent: { ...intent, movie: null } };
+      const lista = (await carteleraDeLaSede(sinPelicula)) ?? preguntarQuePelicula(sinPelicula);
+      if (lista.opciones && actual) {
+        lista.opciones = lista.opciones.filter((o) => o.peliculaId !== actual.id);
+        if (lista.estado === 'cartelera' && lista.pregunta && intent.cinema) {
+          lista.pregunta = `Además de ${actual.title}, ${lista.pregunta.charAt(0).toLowerCase()}${lista.pregunta.slice(1)}`;
+        }
+      }
+      // Se suelta la película —es de la que se quería salir—, pero se respeta
+      // el contexto que armó la cartelera: si cedió el día, recuerda el día.
+      lista.contexto = { ...lista.contexto, movieId: null };
+      return lista;
     },
   },
 
@@ -514,6 +557,38 @@ const REGLAS = [
   },
 
   {
+    // Varias sedes empatadas: preguntar es más rápido que mandar a la equivocada.
+    // Va antes de preguntar por la película: «qué dan hoy en real plaza» nombra
+    // seis sedes, y contestar «¿en qué ciudad vas al cine?» es no haber leído
+    // que la persona ya dijo dónde. Sólo cede si la película pedida no tiene
+    // funciones en ningún lado: ahí lo primero es decir eso.
+    nombre: 'varias-sedes-empatadas',
+    cuando: async (ctx) =>
+      !!ctx.intent.cinemaOptions && (!ctx.intent.movie || (await funcionesEnElPais(ctx)).length > 0),
+    responde: async (ctx) => {
+      const { intent } = ctx;
+      let opciones = intent.cinemaOptions;
+      // Si ya se sabe la película, sólo las sedes donde se da.
+      if (intent.movie) {
+        const ids = new Set((await funcionesEnElPais(ctx)).map((f) => f.cinemaId));
+        const conLaPelicula = opciones.filter((c) => ids.has(c.id));
+        if (conLaPelicula.length) opciones = conLaPelicula;
+      }
+      return {
+        estado: 'elige-cine',
+        // «¿Cuál de estos?» con una sola opción suena a no haber mirado.
+        pregunta:
+          opciones.length === 1 && intent.movie
+            ? `${intent.movie.title} sólo se da en ésta:`
+            : '¿Cuál de estos?',
+        opciones: opciones.slice(0, 6).map((c) => ({ id: c.id, nombre: c.name, ciudad: c.city })),
+        intent,
+        contexto: recordar(intent),
+      };
+    },
+  },
+
+  {
     // No hay película: o se lista la cartelera de la sede, o se pregunta cuál.
     nombre: 'sin-pelicula',
     cuando: ({ intent }) => !intent.movie,
@@ -547,29 +622,45 @@ const REGLAS = [
   },
 
   {
-    // Varias sedes empatadas: preguntar es más rápido que mandar a la equivocada.
-    nombre: 'varias-sedes-empatadas',
-    cuando: ({ intent }) => !!intent.cinemaOptions,
-    responde: ({ intent }) => ({
-      estado: 'elige-cine',
-      pregunta: '¿Cuál de estos?',
-      opciones: intent.cinemaOptions.slice(0, 5).map((c) => ({ id: c.id, nombre: c.name, ciudad: c.city })),
-      intent,
-      contexto: recordar(intent),
-    }),
-  },
-
-  {
     // Nombró un lugar que no reconocemos: decirlo es más honesto que listar sedes
     // de otra ciudad como si fueran la respuesta.
     nombre: 'lugar-desconocido',
-    cuando: ({ intent }) => !intent.cinema && !!intent.lugarDesconocido,
-    responde: ({ intent }) => ({
-      estado: 'falta',
-      pregunta: `No ubico "${intent.lugarDesconocido}". ¿En qué distrito o ciudad del Perú?`,
-      intent,
-      contexto: recordar(intent),
-    }),
+    cuando: ({ intent }) => !intent.cinema && !!(intent.cineDesconocido || intent.lugarDesconocido),
+    responde: async (ctx) => {
+      const { intent, cinemaList } = ctx;
+      // Sólo se afirma que no está entre los cines cuando se nombró un cine.
+      // Una palabra suelta después de «en» puede ser cualquier cosa.
+      const noUbico = intent.cineDesconocido
+        ? `No ubico «${intent.cineDesconocido}» entre los cines de Cineplanet`
+        : `No ubico «${intent.lugarDesconocido}»`;
+      // Si ya se sabe la película y dónde anda la persona, lo útil es decir
+      // dónde sí la dan, cerca. Preguntar el distrito a secas obligaba a
+      // adivinar cómo se llama la sede que tenía en mente.
+      if (intent.movie && intent.districtCoords) {
+        const conFuncion = await funcionesEnElPais(ctx);
+        const sedes = [...new Set(conFuncion.map((f) => f.cinemaId))]
+          .map((id) => cinemaList.find((c) => c.id === id))
+          .filter(Boolean);
+        const cerca = nearest(sedes, intent.districtCoords, 3);
+        if (cerca.length) {
+          return {
+            estado: 'elige-cine',
+            pregunta: `${noUbico}. ${intent.movie.title} está cerca en:`,
+            opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+            intent,
+            contexto: recordar(intent),
+          };
+        }
+      }
+      const ciudades = ciudadesPrincipales(cinemaList);
+      return {
+        estado: ciudades.length ? 'elige-cine' : 'falta',
+        pregunta: `${noUbico}. ¿En qué ciudad o distrito vas al cine?`,
+        opciones: ciudades.length ? ciudades.map((c) => ({ nombre: c })) : undefined,
+        intent,
+        contexto: recordar(intent),
+      };
+    },
   },
 
   {
@@ -731,7 +822,36 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
     items.slice(0, 8).map((m) => ({ nombre: m.titulo, nota: m.rating ?? null, peliculaId: m.id }));
   const porFunciones = (a, b) => b.funciones - a.funciones;
 
-  // 1. Lo que se pidió, tal cual.
+  // 1. Lo que se pidió, tal cual — y si ya dijo cuántos van, sólo donde caben.
+  //    Alguien escribió «para 6 personas» y recibió la cartelera entera,
+  //    incluida la película que se acababa de llenar; después «¿qué película
+  //    tiene para 6 juntas?» y la misma lista otra vez.
+  if (pedido.length && intent.seats != null && intent.seats >= 2) {
+    const cuando = cuandoTexto(dia, today);
+    const conLugar = await conLugarPara({ intent, movieList, today }, dia, intent.seats, { limite: 6 });
+    if (conLugar.length) {
+      const todasJuntas = conLugar.every((o) => o.lugar === 'juntas');
+      return {
+        estado: 'cartelera',
+        pregunta: todasJuntas
+          ? `Con ${intent.seats} butacas juntas en ${cine} ${cuando}:`
+          : `Con lugar para ${intent.seats} en ${cine} ${cuando}:`,
+        opciones: conLugar.map((o) => ({
+          nombre: o.titulo,
+          nota: o.lugar === 'juntas' ? o.hora : `${o.hora} · separados`,
+          peliculaId: o.id,
+        })),
+        intent,
+        contexto: recordar(intent),
+      };
+    }
+    return {
+      estado: 'sin-cartelera',
+      mensaje: `${frase(cuando)} ninguna película tiene lugar para ${intent.seats} en ${cine}. ¿Probamos otro día u otro cine?`,
+      intent,
+      contexto: recordar(intent),
+    };
+  }
   if (pedido.length) {
     pedido.sort(porFunciones);
     const cuando = cuandoTexto(dia, today);
@@ -857,7 +977,9 @@ function preguntarQuePelicula({ intent, cinemaList }) {
     if (ciudades.length) {
       return {
         estado: 'elige-cine',
-        pregunta: '¿En qué ciudad o distrito vas al cine? Te digo qué dan ahí.',
+        pregunta: intent.cineDesconocido
+          ? `No ubico «${intent.cineDesconocido}» entre los cines de Cineplanet. ¿En qué ciudad o distrito vas al cine? Te digo qué dan ahí.`
+          : '¿En qué ciudad o distrito vas al cine? Te digo qué dan ahí.',
         opciones: ciudades.map((c) => ({ nombre: c })),
         intent,
         contexto: recordar(intent),
@@ -870,6 +992,57 @@ function preguntarQuePelicula({ intent, cinemaList }) {
     intent,
     contexto: recordar(intent),
   };
+}
+
+/**
+ * Otras películas en la misma sede y el mismo día que **sí** tienen lugar para
+ * el grupo, con la hora de la función que lo tiene.
+ *
+ * Se mira el mapa de una sola función por película —la más próxima— y todas a
+ * la vez: son llamadas a Cineplanet, y el caso sólo aparece cuando la película
+ * pedida ya se llenó, así que conviene que no haga esperar.
+ */
+async function otrasConLugar(ctx, dia, asientos, limite = 3) {
+  return conLugarPara(ctx, dia, asientos, { excluir: ctx.intent.movie?.id, limite });
+}
+
+/**
+ * Películas de la sede que ese día tienen lugar para `asientos` personas.
+ * La usa también la cartelera cuando la persona ya dijo cuántos van: listarle
+ * a un grupo de 6 películas donde no caben es mandarlo a elegir dos veces.
+ */
+async function conLugarPara({ intent, movieList, today }, dia, asientos, { excluir = null, limite = 3 } = {}) {
+  const candidatas = [];
+  for (const m of movieList) {
+    if (m.id === excluir) continue;
+    const f = stillSellable(
+      await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
+      today,
+    ).filter((s) => s.date === dia);
+    if (f.length) candidatas.push({ pelicula: m, funciones: f });
+  }
+  // Primero lo que empieza antes: es lo que alguien puede ir a ver.
+  candidatas.sort((a, b) => a.funciones[0].minutes - b.funciones[0].minutes);
+
+  const revisadas = await Promise.all(
+    candidatas.slice(0, 8).map(async ({ pelicula, funciones }) => {
+      for (const f of funciones.slice(0, 2)) {
+        try {
+          const lugar = cabida(await seatMap(f.cinemaId, f.sessionId), asientos);
+          if (lugar !== 'llena') return { id: pelicula.id, titulo: pelicula.title, hora: f.time, lugar };
+        } catch {
+          // Si no se puede leer el mapa, esa película no se ofrece como segura.
+        }
+      }
+      return null;
+    }),
+  );
+  const conLugar = revisadas.filter(Boolean).sort((a, b) => a.hora.localeCompare(b.hora));
+  // Juntas antes que separadas —es lo que pidió un grupo— y cada grupo por hora.
+  return [
+    ...conLugar.filter((o) => o.lugar === 'juntas'),
+    ...conLugar.filter((o) => o.lugar === 'sueltas'),
+  ].slice(0, limite);
 }
 
 /**
@@ -947,6 +1120,8 @@ async function caminoDeCompra(ctx) {
   let elegida = null;
   let mapa = null;
   let agotadas = 0;
+  // Funciones con butacas libres, pero menos que las personas que van.
+  let sinLugar = 0;
   let falloMapa = null;
   let respaldo = null;
   let sueltas = false;
@@ -971,9 +1146,20 @@ async function caminoDeCompra(ctx) {
         }),
         })),
       };
+      // Una sala sin lugar para todos no es una opción, aunque Cineplanet no la
+      // marque como agotada: a veces devuelve el plano normal con todo ocupado.
+      // Se ofreció así una función con cero butacas libres de 112 —botón de
+      // comprar incluido— a alguien que pedía 6 entradas.
+      const lugar = cabida(map, asientos);
+      if (lugar === 'llena') {
+        if (map.free === 0) agotadas += 1;
+        else sinLugar += 1;
+        mapa = null;
+        continue;
+      }
       // Una función sin butacas juntas no sirve para el grupo: se guarda por si
       // no hay nada mejor, y se sigue buscando.
-      if (!mapa.sugeridas.length) {
+      if (lugar === 'sueltas') {
         if (!respaldo) respaldo = { candidata, mapa };
         mapa = null;
         continue;
@@ -997,14 +1183,43 @@ async function caminoDeCompra(ctx) {
     sueltas = true;
   }
   if (!elegida) {
+    // Decir sólo "está llena" deja a la persona donde empezó. Lo que pregunta a
+    // continuación es siempre lo mismo —«¿y qué película sí tiene lugar?»— así
+    // que se responde antes de que lo pregunte.
+    // El número sólo se nombra si la persona lo dijo: «no tiene lugar para 2»
+    // a quien nunca dijo cuántos iban es afirmar algo que no sabemos.
+    const paraCuantos = intent.seats != null && asientos > 1 ? ` para ${asientos}` : '';
+    const porQue =
+      sinLugar > 0
+        ? `${intent.movie.title} no tiene lugar${paraCuantos} en ${intent.cinema.name} ${cuandoTexto(date, today)}`
+        : `${intent.movie.title} está agotada en ${intent.cinema.name} ${cuandoTexto(date, today)}`;
+    const otras = await otrasConLugar(ctx, date, asientos);
+    if (otras.length) {
+      // Sólo se promete «juntas» si todas lo están. Cada opción dice lo suyo:
+      // anunciar butacas juntas y ofrecer una función donde van separados es la
+      // misma afirmación falsa que se está arreglando acá.
+      const todasJuntas = otras.every((o) => o.lugar === 'juntas');
+      return {
+        estado: 'cartelera',
+        pregunta: `${porQue}. ${
+          todasJuntas && paraCuantos ? `Con ${asientos} butacas juntas` : 'Con lugar'
+        } sí hay:`,
+        opciones: otras.map((o) => ({
+          nombre: o.titulo,
+          nota: o.lugar === 'juntas' || asientos === 1 ? o.hora : `${o.hora} · separados`,
+          peliculaId: o.id,
+        })),
+        intent,
+        // Se suelta la película —se acaba de decir que no hay lugar— y se
+        // conserva todo lo demás: la sede, el día y, sobre todo, cuántos van.
+        contexto: recordar({ ...intent, movie: null }),
+      };
+    }
     return {
       estado: 'sin-cartelera',
-      mensaje:
-        agotadas === 1
-          ? `Esa función de ${intent.movie.title} está agotada.`
-          : `Las ${agotadas} funciones de ${intent.movie.title} que encontré están agotadas.`,
+      mensaje: `${porQue}, y ninguna otra película tiene lugar${paraCuantos} ahí ese día. ¿Probamos otro día u otro cine?`,
       intent,
-      contexto: recordar(intent),
+      contexto: recordar({ ...intent, movie: null }),
     };
   }
 
@@ -1134,8 +1349,11 @@ export async function resolve(text, { today = limaToday(), contexto = null, eleg
     ? {
         ...fresco,
         movie: fresco.movie ?? previo.movie,
-        // Nombrar un distrito nuevo descarta la sede anterior: cambió de idea.
-        cinema: fresco.cinema ?? (fresco.district ? null : previo.cinema),
+        // Nombrar un distrito nuevo descarta la sede anterior: cambió de idea. Y
+        // nombrar un lugar que no conocemos también: alguien con CP Salaverry en
+        // la conversación pidió «spiderman en cp costanera» —que no existe— y
+        // recibió la cartelera de Salaverry, como si no hubiera dicho nada.
+        cinema: fresco.cinema ?? (fresco.district || fresco.cineDesconocido ? null : previo.cinema),
         districtCoords: fresco.districtCoords ?? contexto.coords ?? null,
         date: fresco.date ?? contexto.date ?? null,
         from: fresco.from ?? contexto.from ?? null,
