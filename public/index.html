@@ -197,6 +197,7 @@
     font-size:14px;font-weight:450;letter-spacing:-.01em;padding:11px 16px;border-radius:999px;
     transition:transform .18s cubic-bezier(.2,.7,.3,1),border-color .18s;
   }
+  .opciones button small{margin-left:8px;font-size:12.5px;color:var(--ink-2);font-weight:400}
   .opciones button:hover{border-color:var(--ink-3)}
   .opciones button:active{transform:scale(.97)}
 
@@ -607,6 +608,10 @@ function responder(r) {
     const fila = el('div', 'opciones');
     for (const o of r.opciones) {
       const b = el('button', null, o.nombre);
+      // La hora de la función que tiene lugar, y si el grupo iría separado. Sin
+      // esto la respuesta decía «con lugar sí hay» y los botones callaban cuál
+      // de esas funciones sentaba al grupo separado.
+      if (o.detalle) b.append(el('small', null, o.detalle));
       b.type = 'button';
       b.addEventListener('click', () => elegir(o));
       fila.append(b);

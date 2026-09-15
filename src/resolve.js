@@ -838,16 +838,31 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
           : `Con lugar para ${intent.seats} en ${cine} ${cuando}:`,
         opciones: conLugar.map((o) => ({
           nombre: o.titulo,
-          nota: o.lugar === 'juntas' ? o.hora : `${o.hora} · separados`,
+          // `detalle` y no `nota`: `nota` es la clasificación (APT, +14) y la web
+          // no la pinta. Esto sí tiene que verse: la hora que se promete, y si
+          // el grupo va separado.
+          detalle: o.lugar === 'juntas' ? o.hora : `${o.hora} · separados`,
           peliculaId: o.id,
         })),
         intent,
         contexto: recordar(intent),
       };
     }
+    if (conLugar.sePudoMirar) {
+      return {
+        estado: 'sin-cartelera',
+        mensaje: `${frase(cuando)} ninguna película tiene lugar para ${intent.seats} en ${cine}. ¿Probamos otro día u otro cine?`,
+        intent,
+        contexto: recordar(intent),
+      };
+    }
+    // No se pudo leer ningún mapa: se lista la cartelera sin filtrar y se dice
+    // por qué. Afirmar «no hay lugar» sin haber visto la sala es inventar.
+    pedido.sort(porFunciones);
     return {
-      estado: 'sin-cartelera',
-      mensaje: `${frase(cuando)} ninguna película tiene lugar para ${intent.seats} en ${cine}. ¿Probamos otro día u otro cine?`,
+      estado: 'cartelera',
+      pregunta: `En ${cine} ${cuando} dan esto, pero Cineplanet no me está mostrando las butacas y no puedo decirte dónde caben ${intent.seats}:`,
+      opciones: listar(pedido),
       intent,
       contexto: recordar(intent),
     };
@@ -1024,25 +1039,39 @@ async function conLugarPara({ intent, movieList, today }, dia, asientos, { exclu
   // Primero lo que empieza antes: es lo que alguien puede ir a ver.
   candidatas.sort((a, b) => a.funciones[0].minutes - b.funciones[0].minutes);
 
+  // Cuántos mapas se pudieron leer. Si no se leyó ninguno, «no hay lugar» no es
+  // algo que sepamos: sólo que no pudimos mirar. Quien llama tiene que poder
+  // distinguir una cosa de la otra.
+  let leidos = 0;
   const revisadas = await Promise.all(
     candidatas.slice(0, 8).map(async ({ pelicula, funciones }) => {
+      // Se miran las dos primeras funciones y se prefiere la que sienta al grupo
+      // junto: es la que después elige la tarjeta. Quedarse con la primera que
+      // tuviera lugar hacía que el botón prometiera «16:10 · separados» y la
+      // tarjeta abriera la de las 19:00.
+      let separada = null;
       for (const f of funciones.slice(0, 2)) {
         try {
           const lugar = cabida(await seatMap(f.cinemaId, f.sessionId), asientos);
-          if (lugar !== 'llena') return { id: pelicula.id, titulo: pelicula.title, hora: f.time, lugar };
+          leidos += 1;
+          const opcion = { id: pelicula.id, titulo: pelicula.title, hora: f.time, lugar };
+          if (lugar === 'juntas') return opcion;
+          if (lugar === 'sueltas' && !separada) separada = opcion;
         } catch {
-          // Si no se puede leer el mapa, esa película no se ofrece como segura.
+          // Si no se puede leer el mapa, esa función no se ofrece como segura.
         }
       }
-      return null;
+      return separada;
     }),
   );
   const conLugar = revisadas.filter(Boolean).sort((a, b) => a.hora.localeCompare(b.hora));
   // Juntas antes que separadas —es lo que pidió un grupo— y cada grupo por hora.
-  return [
+  const opciones = [
     ...conLugar.filter((o) => o.lugar === 'juntas'),
     ...conLugar.filter((o) => o.lugar === 'sueltas'),
   ].slice(0, limite);
+  opciones.sePudoMirar = leidos > 0;
+  return opciones;
 }
 
 /**
@@ -1206,7 +1235,7 @@ async function caminoDeCompra(ctx) {
         } sí hay:`,
         opciones: otras.map((o) => ({
           nombre: o.titulo,
-          nota: o.lugar === 'juntas' || asientos === 1 ? o.hora : `${o.hora} · separados`,
+          detalle: o.lugar === 'juntas' || asientos === 1 ? o.hora : `${o.hora} · separados`,
           peliculaId: o.id,
         })),
         intent,
@@ -1217,7 +1246,9 @@ async function caminoDeCompra(ctx) {
     }
     return {
       estado: 'sin-cartelera',
-      mensaje: `${porQue}, y ninguna otra película tiene lugar${paraCuantos} ahí ese día. ¿Probamos otro día u otro cine?`,
+      mensaje: otras.sePudoMirar
+        ? `${porQue}, y ninguna otra película tiene lugar${paraCuantos} ahí ese día. ¿Probamos otro día u otro cine?`
+        : `${porQue}. No pude revisar las butacas de las demás películas: Cineplanet no las está mostrando. ¿Probamos otro día u otro cine?`,
       intent,
       contexto: recordar({ ...intent, movie: null }),
     };
