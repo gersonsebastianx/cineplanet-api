@@ -270,12 +270,18 @@ npm test
 npm run barrido
 ```
 
-Las dos corren solas en GitHub a las 9:00 y 21:00 de Lima
+Las dos corren solas en GitHub a las 9:17 y 21:17 de Lima
 ([`.github/workflows/revision.yml`](.github/workflows/revision.yml)), sin
 depender de que ninguna computadora esté encendida. Antes de evaluar nada, la
 revisión pregunta si Cineplanet está respondiendo: si su plataforma está caída
 —pasa seguido— se salta y lo dice, en vez de pintarse de rojo por algo que no
 rompimos.
+
+Antes de todo eso, la revisión pregunta directo a producción
+([`test/produccion.mjs`](test/produccion.mjs)): que la portada cargue con su
+vista previa y que una consulta real llegue a una respuesta. Es lo único que
+mira la web que usa la gente, y no depende de que Cineplanet acepte a GitHub —
+que a veces lo rechaza con un 403 mientras la web anda perfecta.
 
 `npm test` son las pruebas de siempre. El barrido es otra cosa y tarda un par de
 minutos: recorre las 43 sedes y todas las películas con funciones buscando las

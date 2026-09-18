@@ -1,8 +1,6 @@
 # Revisión automática, dos veces al día, sin depender de ninguna computadora
 # encendida. No razona ni arregla —eso es trabajo del agente—: es la red que
 # avisa cuando algo se rompió solo, que pasa más seguido de lo que parece.
-# En diez días la cartelera se llevó por delante dos películas y con ellas
-# pruebas que nadie había tocado.
 #
 # La clave `on` va entrecomillada a propósito: sin comillas, YAML la lee como
 # el booleano `true` y GitHub se queda sin disparadores — el workflow arranca y
@@ -11,10 +9,12 @@
 name: Revisión
 
 "on":
-  # 09:00 y 21:00 en Lima (UTC-5). GitHub programa en UTC.
+  # GitHub atrasa los cron programados a la hora en punto —se midió: entre tres
+  # y cinco horas—. En minutos sueltos el atraso es mucho menor. Estos apuntan
+  # a las 9:17 y 21:17 de Lima (UTC-5); GitHub programa en UTC.
   schedule:
-    - cron: "0 14 * * *"
-    - cron: "0 2 * * *"
+    - cron: "17 14 * * *"
+    - cron: "17 2 * * *"
   workflow_dispatch: {}
   push:
     branches: [main]
@@ -29,9 +29,17 @@ jobs:
         with:
           node-version: "22"
 
+      # Lo primero, y lo que más importa: la web que usa la gente. No depende
+      # de que Cineplanet acepte a GitHub, porque pregunta a producción, que
+      # corre en Vercel. Falla sólo si el fallo es nuestro.
+      - name: La web en producción
+        run: node test/produccion.mjs
+
       # Sin dependencias: no hay nada que instalar.
-      # Antes de evaluar nada, se pregunta si Cineplanet está en pie: un build
-      # rojo por algo que no rompimos enseña a ignorar el rojo.
+      # Antes de probar el código se pregunta si Cineplanet contesta desde acá.
+      # Distingue que rechace a GitHub (403 en la portada) de que esté caído, y
+      # reintenta antes de rendirse: un build rojo por algo que no rompimos
+      # enseña a ignorar el rojo.
       - name: Cineplanet responde
         id: cineplanet
         run: node test/cineplanet-vivo.mjs
@@ -46,6 +54,10 @@ jobs:
         if: steps.cineplanet.outputs.vivo == 'true'
         run: npm run barrido
 
-      - name: Cineplanet no respondia
-        if: steps.cineplanet.outputs.vivo != 'true'
-        run: echo "::notice::Revision saltada porque Cineplanet no responde. No es un fallo de este repositorio."
+      - name: Cineplanet rechazo a GitHub
+        if: steps.cineplanet.outputs.motivo == 'rechazo'
+        run: echo "::notice::Pruebas y barrido saltados porque Cineplanet rechazo la conexion desde GitHub (403). La web en produccion se reviso en el paso anterior."
+
+      - name: Cineplanet caido
+        if: steps.cineplanet.outputs.motivo == 'caida'
+        run: echo "::notice::Pruebas y barrido saltados porque Cineplanet no responde. No es un fallo de este repositorio."

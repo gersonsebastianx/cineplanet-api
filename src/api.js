@@ -144,9 +144,18 @@ async function pedir(path) {
     // vencido: una cartelera de hace un rato es mejor que una disculpa.
     const vencido = sirveElSnapshot(path) ? cache.get(path) : null;
     if (vencido) return vencido.json;
-    const hint = !cookie
-      ? ' — Cineplanet no está emitiendo cookie de sesión, su plataforma está caída. Reintenta en unos minutos.'
-      : '';
+    // Dos cosas distintas que antes se decían igual. Si la portada responde 403
+    // al primer pedido, Cineplanet **rechazó a quien pregunta** —un bloqueo por
+    // IP, típico con servidores de datos— y su plataforma puede estar perfecta.
+    // Si la portada responde pero no da cookie, o no responde, está caída.
+    // Confundirlas mandó a buscar una caída que no existía: GitHub recibía 403
+    // por las tardes mientras la web andaba bien.
+    const rechazo = /\(403\)/.test(err.message);
+    const hint = cookie
+      ? ''
+      : rechazo
+        ? ' — Cineplanet rechazó la conexión desde esta dirección (403 en la portada). Su plataforma puede estar bien: es un bloqueo a quien pregunta.'
+        : ' — Cineplanet no está emitiendo cookie de sesión, su plataforma está caída. Reintenta en unos minutos.';
     throw new Error(`${err.message}${hint}`);
   }
   cache.set(path, { json: live, obtenido: Date.now(), edadInicial: 0 });
