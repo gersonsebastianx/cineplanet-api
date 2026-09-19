@@ -821,6 +821,12 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     /\b(somos|vamos|seremos|iremos|seriamos)\s+\d{1,2}\b/.test(t);
   const numeroSuelto = date == null && from == null && to == null && !hayCantidad;
   const used = new Set(cinemaHit?.hits ?? []);
+  // Un lugar dicho con todas sus letras tampoco compite por ser película. Entró
+  // «Tierra de mi Padre» a cartelera y «puente piedra» pasó a elegirla —piedra
+  // está a dos letras de tierra—, con lo que la frase dejaba de ser un lugar.
+  for (const lugar of [district, ciudadSinSede, ciudadConSede?.nombre]) {
+    if (lugar) for (const w of tokens(lugar)) used.add(w);
+  }
   // Tampoco las que ya explica una pregunta sobre la conversación misma: «qué
   // asientos quedan libres» encontraba la película «Queen Budapest» —quedan a
   // dos letras de queen— y la tarjeta cambiaba de película por una pregunta
@@ -915,6 +921,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
           : porNom
         : (porNom?.item ? porNom : porDist?.item ? porDist : null);
     cinemaHit = otra?.item ? otra : null;
+    // Y el recálculo respeta la misma regla que el cálculo original: un lugar
+    // dicho con todas sus letras le gana a una sede que sólo se parece. Sin
+    // esto, cualquier película que entrara a cartelera podía reabrir el camino
+    // de «puente piedra» a CP Piura.
+    if ((district || ciudadConSede) && cinemaHit && cinemaHit.confianza !== 'alta') cinemaHit = null;
   }
 
   // Un lugar de fuera del Perú, sólo si no se reconoció ninguno de acá: el

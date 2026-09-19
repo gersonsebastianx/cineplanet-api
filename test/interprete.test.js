@@ -403,6 +403,28 @@ test('«puente piedra» no manda a CP Piura', () => {
   }
 });
 
+// El 19 de septiembre la prueba de arriba se puso roja sola: entró a cartelera
+// «Tierra de mi Padre», «piedra» quedó a dos letras de «tierra», la frase eligió
+// esa película y, al recalcular la sede sin las palabras del título, se saltó la
+// protección y volvió a mandar a Puente Piedra a CP Piura. Se fabrica ese título
+// acá para que el caso no dependa de lo que haya en cartelera.
+test('un título nuevo parecido a un distrito no reabre el camino a otra ciudad', () => {
+  // Si la real está en cartelera se saca: con dos títulos idénticos el caso
+  // mide cuál de los dos gana, no lo que se quiere probar.
+  const conTrampa = [
+    ...ms.filter((m) => !/^tierra de mi padre$/i.test(m.title.trim())),
+    { id: 'TRAMPA', title: 'Tierra de mi Padre', slug: 'tierra', cinemas: [] },
+  ];
+  for (const f of ['puente piedra', 'vivo en puente piedra', 'quiero ver algo en puente piedra']) {
+    const r = parse(f, { movies: conTrampa, cinemas: cs });
+    assert.equal(r.cinema, null, `${f} → ${r.cinema?.name}`);
+    assert.equal(r.district, 'puente piedra', f);
+    assert.notEqual(r.movie?.id, 'TRAMPA', `${f} eligió la película`);
+  }
+  // Y el título, dicho de verdad, se sigue reconociendo.
+  assert.equal(parse('tierra de mi padre', { movies: conTrampa, cinemas: cs }).movie?.id, 'TRAMPA');
+});
+
 test('una sede sólo parecida se pregunta, no se decide', () => {
   // Mandar a alguien al cine equivocado cuesta más que una pregunta de más.
   const r = leer('quiero ver algo en salaverri');
