@@ -322,6 +322,23 @@ test('quién viene no puede elegir película', () => {
   assert.equal(leerlo('amigo por ahi no es').movie?.id, 'TRAMPA');
 });
 
+// Hay preguntas legítimas que esta web no responde —los precios, la dulcería— y
+// se dicen de frente. Pero un título puede llamarse igual: entró «A Cualquier
+// Precio» a cartelera y escribir el título recibía «No sé nada sobre los
+// precios». Se fabrica el título acá para no depender de la cartelera.
+test('un título que suena a pregunta fuera de alcance sigue siendo un título', () => {
+  const conTrampa = [
+    ...ms.filter((m) => !/^a cualquier precio$/i.test(m.title.trim())),
+    { id: 'TRAMPA', title: 'A Cualquier Precio', slug: 'precio', cinemas: [] },
+  ];
+  const leerlo = (f) => parse(f, { movies: conTrampa, cinemas: cs });
+  assert.equal(leerlo('a cualquier precio').fuera, null);
+  assert.equal(leerlo('a cualquier precio').movie?.id, 'TRAMPA');
+  // Y preguntar de verdad por el precio se sigue diciendo de frente.
+  for (const f of ['cuanto cuesta la entrada', 'que precio tienen las entradas', 'hay descuento de socio']) {
+    assert.notEqual(leerlo(f).fuera, null, f);
+  }
+});
 
 test(
   'el título sigue ganando cuando de verdad empieza con «mi»',

@@ -1059,7 +1059,21 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
       /\b(otro|otra)\s+(cine|cinepla\w*|sede|local|sitio|lugar|lado)\b|\bcambiar\s+(de\s+)?(cine|sede)\b|\ben\s+otro\s+lado\b/.test(
         norm(text),
       ),
-    fuera: FUERA.find((f) => f.pide.test(norm(text)))?.tema ?? null,
+    // Un título puede llamarse como una pregunta que no contestamos: «A
+    // Cualquier Precio» es una película, no una consulta de precios. Si lo que
+    // disparó la regla es parte del título que se nombró, manda la película.
+    fuera:
+      FUERA.find((f) => {
+        const dicho = f.pide.exec(norm(text))?.[0];
+        if (!dicho) return false;
+        // No basta compartir una palabra —«qué precio tienen las entradas»
+        // comparte «precio» con ese título—: hay que haberlo dicho entero.
+        if (movieHit?.item && t.includes(norm(movieHit.item.title))) {
+          const delTitulo = new Set(tokens(movieHit.item.title));
+          if (tokens(dicho).every((w) => delTitulo.has(w))) return false;
+        }
+        return true;
+      })?.tema ?? null,
     // Quiere elegir sus butacas: se le dice dónde se eligen, sin perder lo que
     // ya había elegido.
     butacasPropias: BUTACAS_PROPIAS.test(t),
