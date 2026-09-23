@@ -737,6 +737,14 @@ const OTRA_PELICULA =
 // con la misma.
 const NO_OTRA = /\bno\s+(quiero|busco|me\s+interesa|necesito)\s+(otra|otras)\b/;
 
+// Quién viene. Dice cuántas entradas hacen falta, no qué película: «iré con mi
+// amigo» son dos, y «amigo» no es una pista de título.
+const ACOMPANADO =
+  /\b(con\s+)?(mi|un[ao])\s+(amig[ao]|herman[ao]|prim[ao]|mama|papa|madre|padre|hij[ao]|novi[ao]|espos[ao]|pareja|enamorad[ao]|ti[ao]|abuel[ao])\b/;
+// En plural no dice cuántos: mejor preguntar que suponer.
+const EN_GRUPO_VAGO = /\b(con\s+)?(mis|unos|unas)\s+(amig[oa]s|herman[oa]s|prim[oa]s|hij[oa]s)\b/;
+const PAREJA = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/;
+
 /** Minúsculas y sin tildes, pero con la puntuación: «no, quiero» ≠ «no quiero». */
 const conPuntuacion = (s) =>
   (s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
@@ -834,6 +842,20 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   for (const intencion of [BUTACAS_PROPIAS, BUTACAS_LIBRES, OTRA_PELICULA, NO_OTRA]) {
     const dicho = intencion.exec(t)?.[0];
     if (dicho) for (const w of tokens(dicho)) used.add(w);
+  }
+  // Ni quién viene. Entró «Amigo por ahi no es» a cartelera y «iré con mi amigo»
+  // pasó a elegirla con certeza alta —un estreno sin funciones—, dejando de
+  // contar al acompañante. Salvo que el título se haya dicho entero: entonces
+  // manda el título y no la compañía.
+  const tituloEntero = movies.some((m) => {
+    const titulo = norm(m.title);
+    return titulo.length >= 6 && t.includes(titulo);
+  });
+  if (!tituloEntero) {
+    for (const quien of [ACOMPANADO, EN_GRUPO_VAGO, PAREJA]) {
+      const dicho = quien.exec(t)?.[0];
+      if (dicho) for (const w of tokens(dicho)) used.add(w);
+    }
   }
   const rest = tokens(text)
     .filter(
@@ -957,13 +979,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Cuántos van casi nunca viene como número. "Iré solo" o "somos 3" decían lo
   // mismo que "para 1 persona" y se ignoraban, así que seguía sugiriendo dos.
   const t2 = norm(text);
-  const pareja = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/.test(t2);
+  const pareja = PAREJA.test(t2);
   // "iré con mi amigo" son dos entradas. Se acepta sin el "con" porque el tipeo
   // es frecuente —"ire ocn mi amigo"— y "mi amigo" ya dice que no va solo.
-  const acompanado =
-    /\b(con\s+)?(mi|un[ao])\s+(amig[ao]|herman[ao]|prim[ao]|mama|papa|madre|padre|hij[ao]|novi[ao]|espos[ao]|pareja|enamorad[ao]|ti[ao]|abuel[ao])\b/.exec(t2);
-  // En plural no dice cuántos: mejor preguntar que suponer.
-  const enGrupoVago = /\b(con\s+)?(mis|unos|unas)\s+(amig[oa]s|herman[oa]s|prim[oa]s|hij[oa]s)\b/.test(t2);
+  const acompanado = ACOMPANADO.exec(t2);
+  const enGrupoVago = EN_GRUPO_VAGO.test(t2);
   const solo =
     /\b(ire|ir|voy|iba|estare|estoy|vengo|vere|veo)\s+sol[oa]s?\b/.test(t2) ||
     /\b(yo\s+sol[oa]|sol[oa]\s+yo|sol[oa]\s+nomas)\b/.test(t2) ||

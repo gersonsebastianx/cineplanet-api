@@ -302,6 +302,27 @@ test('«con mis amigos» no inventa cuántos son', () => {
   assert.equal(leer('voy con mis amigos').seats, null, 'en plural hay que preguntar');
 });
 
+// El 21 de septiembre la prueba de arriba se puso roja sola: entró a cartelera
+// «Amigo por ahi no es» y «iré con mi amigo» pasó a elegirla —con certeza alta,
+// y encima es un estreno sin funciones—. Quién viene no es una pista de título.
+// Se fabrica el título acá para que el caso no dependa de la cartelera.
+test('quién viene no puede elegir película', () => {
+  const conTrampa = [
+    ...ms.filter((m) => !/^amigo por ahi no es$/i.test(m.title.trim())),
+    { id: 'TRAMPA', title: 'Amigo por ahi no es', slug: 'amigo', cinemas: [] },
+  ];
+  const leerlo = (f) => parse(f, { movies: conTrampa, cinemas: cs });
+  for (const f of ['ire ocn mi amigo', 'iré con mi amigo', 'voy con una amiga', 'con mis amigos']) {
+    const r = leerlo(f);
+    assert.notEqual(r.movie?.id, 'TRAMPA', `${f} → ${r.movie?.title}`);
+    assert.deepEqual(r.sobrantes, [], f);
+  }
+  // Y el título, dicho de verdad, se sigue reconociendo aunque lleve «amigo».
+  assert.equal(leerlo('quiero ver amigo por ahi no es en salaverry').movie?.id, 'TRAMPA');
+  assert.equal(leerlo('amigo por ahi no es').movie?.id, 'TRAMPA');
+});
+
+
 test(
   'el título sigue ganando cuando de verdad empieza con «mi»',
   { skip: !enCartelera('Mi Vecino Totoro') && 'Mi Vecino Totoro ya no está en cartelera' },
