@@ -46,6 +46,39 @@ const recordar = (i) => ({
   genero: i.genero?.dice ?? null,
 });
 
+/** Contestaciones de una palabra que son un «no sé» y no nombran un lugar. */
+const NO_ES_UN_LUGAR = new Set(['ninguno', 'ninguna', 'ayudame', 'ayuda', 'cualquiera', 'todos', 'todas']);
+
+/**
+ * La pregunta anterior era «¿en qué ciudad o distrito?». Entonces lo que llegue
+ * sin explicación **es** la respuesta a esa pregunta: un lugar que no ubicamos,
+ * no una palabra sin sentido.
+ *
+ * De la bitácora: quien buscaba Spiderman eligió Lima y contestó «angamos» —una
+ * avenida— a «¿cuál te queda cerca?». Recibió «no entendí «angamos»» y la lista
+ * de países, que además borraba el Lima recién elegido. Decir «no ubico ese
+ * lugar» y seguir ofreciendo sedes cerca respeta las dos cosas que dijo.
+ */
+const lugarQueContesta = (texto, fresco, contexto) => {
+  if (contexto?.esperaba !== 'lugar') return null;
+  // Si se entendió algo —una sede, un distrito, otra película— eso manda.
+  if (fresco.cinema || fresco.district || fresco.cineDesconocido) return null;
+  if (fresco.lugarDesconocido || fresco.movie || fresco.saludo) return null;
+  if (!fresco.sobrantes.length) return null;
+  // Y sólo si eso es **todo** lo que se escribió, contando las palabras tal
+  // como se escribieron. Contestar «cerca de mi casa» o «no tengo idea» deja
+  // suelta una palabra que no nombra ningún lugar, y responder «no ubico
+  // «casa»» sería afirmar que lo es. Quien contesta un lugar lo escribe solo:
+  // «angamos», «san borja».
+  const escritas = texto.trim().split(/\s+/).filter(Boolean);
+  if (escritas.length !== fresco.sobrantes.length) return null;
+  // Y un puñado de respuestas de una palabra que son un «no sé», no un lugar.
+  // Van acá y no en las palabras vacías del intérprete: ahí borrarlas cambiaría
+  // cómo se buscan los títulos, y éstas sí pueden estar en uno.
+  if (fresco.sobrantes.some((w) => NO_ES_UN_LUGAR.has(w))) return null;
+  return fresco.sobrantes.join(' ');
+};
+
 const nowMinutesLima = () => {
   const d = new Date(Date.now() - 5 * 3600 * 1000);
   return d.getUTCHours() * 60 + d.getUTCMinutes();
@@ -503,7 +536,8 @@ const REGLAS = [
     nombre: 'palabras-sin-explicar',
     cuando: ({ fresco }) =>
       !fresco.movie && fresco.sobrantes.length > 0 && (parecidaATitulo(fresco) || !entendioAlgo(fresco)),
-    responde: async ({ fresco, intent, movieList, cinemaList: ctxCiudades, today }) => {
+    responde: async (ctx) => {
+      const { fresco, intent, movieList, cinemaList: ctxCiudades, today } = ctx;
       const dicho = fresco.sobrantes.join(' ');
       const parecida = parecidaATitulo(fresco);
       const noEntendi = parecida
@@ -519,6 +553,26 @@ const REGLAS = [
       // Sin saber dónde va a ir, listar cartelera es listar la de otra punta del
       // país: qué se da depende del distrito.
       if (!intent.cinema) {
+        // Si ya sabemos por dónde anda y qué quiere ver, volver a preguntar la
+        // ciudad es tirar lo que acaba de decir: quien eligió Lima y escribió
+        // algo que no entendimos recibía otra vez «¿Arequipa? ¿Piura?». Se dice
+        // que no se entendió y se sigue con las sedes de donde está.
+        if (recuerdo.movie && intent.districtCoords) {
+          const conFuncion = await funcionesEnElPais(ctx);
+          const sedes = [...new Set(conFuncion.map((f) => f.cinemaId))]
+            .map((id) => ctxCiudades.find((c) => c.id === id))
+            .filter(Boolean);
+          const cerca = nearest(sedes, intent.districtCoords, 3);
+          if (cerca.length) {
+            return {
+              estado: 'elige-cine',
+              pregunta: `${noEntendi}. ${recuerdo.movie.title} está cerca en:`,
+              opciones: cerca.map((c) => ({ id: c.id, nombre: c.name, km: c.km, ciudad: c.city })),
+              intent,
+              contexto: recordar(recuerdo),
+            };
+          }
+        }
         // Con las ciudades a un toque, como el resto de las preguntas por el
         // lugar. Ésta se había quedado atrás: alguien escribe una película que
         // ya salió de cartelera —"toy story"— y recibía una pregunta a secas.
@@ -1339,6 +1393,16 @@ async function caminoDeCompra(ctx) {
 }
 
 /**
+ * `elige-cine` es exactamente la pregunta «¿en qué ciudad, distrito o sede?».
+ * Se marca acá y no en cada regla: así ninguna se olvida, y el turno siguiente
+ * puede leer una palabra suelta como lo que es, la respuesta a esa pregunta.
+ */
+const conLoPreguntado = (r) => {
+  if (r?.estado === 'elige-cine' && r.contexto) r.contexto.esperaba = 'lugar';
+  return r;
+};
+
+/**
  * Resuelve una frase contra la cartelera real.
  * @returns {Promise<object>} respuesta con `estado` y lo necesario para mostrarla
  */
@@ -1380,6 +1444,14 @@ export async function resolve(text, { today = limaToday(), contexto = null, eleg
         cinema: cinemaList.find((c) => c.id === contexto.cinemaId) ?? null,
       }
     : null;
+  // Lo que la persona contestó a «¿en qué lugar?» y no supimos ubicar. Se anota
+  // sobre lo dicho este turno, que es lo que miran las reglas: sirve para dos
+  // cosas a la vez —decir que no lo ubicamos, y dejar de tratar esas mismas
+  // palabras como si no se hubieran entendido—.
+  const lugarContestado = contexto ? lugarQueContesta(text, fresco, contexto) : null;
+  if (lugarContestado) {
+    Object.assign(fresco, { lugarDesconocido: lugarContestado, sobrantes: [] });
+  }
   const intent = contexto
     ? {
         ...fresco,
@@ -1405,10 +1477,10 @@ export async function resolve(text, { today = limaToday(), contexto = null, eleg
   for (const regla of REGLAS) {
     if (!(await regla.cuando(ctx))) continue;
     const respuesta = await regla.responde(ctx);
-    if (respuesta) return respuesta;
+    if (respuesta) return conLoPreguntado(respuesta);
   }
 
-  return caminoDeCompra(ctx);
+  return conLoPreguntado(await caminoDeCompra(ctx));
 }
 
 /**

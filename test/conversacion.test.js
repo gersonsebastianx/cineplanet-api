@@ -206,3 +206,52 @@ test('un lugar que no ubicamos no se trata como palabras sin sentido', async () 
     assert.ok(dicho.includes('?') || r.opciones?.length, `${f} no deja por dónde seguir`);
   }
 });
+
+// La misma conversación del 20 de agosto, entera. Tras elegir Lima, la persona
+// contestó «angamos» a «¿cuál te queda cerca?» y recibió dos agravios en una
+// línea: «no entendí» —como si hubiera escrito mal— y la lista de países, que
+// borraba el Lima que acababa de elegir. Cuando la pregunta anterior fue por un
+// lugar, lo que llega sin explicar es la respuesta a esa pregunta.
+test('contestar un lugar que no ubicamos no borra lo ya elegido', async () => {
+  const pelicula = (await movies()).find((m) => m.cinemas?.length > 1);
+  if (!pelicula) return; // sin cartelera no hay nada que encadenar
+
+  let ctx = null;
+  for (const t of [pelicula.title, 'Lima']) ctx = (await resolve(t, { contexto: ctx })).contexto;
+  assert.ok(ctx.coords, 'tras elegir Lima se recuerda dónde está la persona');
+
+  const r = await resolve('angamos', { contexto: ctx });
+  const dicho = r.pregunta ?? r.mensaje ?? '';
+  assert.match(dicho, /No ubico/i, dicho);
+  assert.doesNotMatch(dicho, /No entendí/i, dicho);
+  // Lo elegido no se pierde: no se vuelve a preguntar por el país.
+  assert.ok(r.opciones?.length, 'tiene que ofrecer por dónde seguir');
+  const nombres = r.opciones.map((o) => o.nombre);
+  assert.ok(
+    !nombres.includes('Arequipa') && !nombres.includes('Piura'),
+    `volvió a preguntar por la ciudad: ${nombres.join(' / ')}`,
+  );
+});
+
+// El mismo desperdicio, un paso más allá: si lo que no entendimos no parece un
+// lugar —«no tengo idea»— tampoco hay que volver a preguntar por el país. La
+// persona ya dijo Lima; ofrecerle Arequipa y Piura es tirar lo que acaba de
+// decir. Se le dice que no se entendió y se sigue con las sedes de donde está.
+test('no entender algo no borra la ciudad ya elegida', async () => {
+  const pelicula = (await movies()).find((m) => m.cinemas?.length > 1);
+  if (!pelicula) return;
+
+  let ctx = null;
+  for (const t of [pelicula.title, 'Lima']) ctx = (await resolve(t, { contexto: ctx })).contexto;
+
+  const r = await resolve('no tengo idea', { contexto: ctx });
+  const dicho = r.pregunta ?? r.mensaje ?? '';
+  assert.ok(r.opciones?.length, `sin opciones: ${dicho}`);
+  const nombres = r.opciones.map((o) => o.nombre);
+  assert.ok(
+    !nombres.includes('Arequipa') && !nombres.includes('Piura'),
+    `volvió a preguntar por la ciudad: ${nombres.join(' / ')}`,
+  );
+  // Y no se inventa que «tengo» sea un lugar.
+  assert.doesNotMatch(dicho, /No ubico/i, dicho);
+});
