@@ -187,3 +187,22 @@ test('nivel difícil: menos del 25% se queda en "no entendí"', () => {
   const pct = (ciega.length / NIVELES.dificil.length) * 100;
   assert.ok(pct < 25, `${pct.toFixed(0)}%: ${ciega.map(([f]) => f).join(', ')}`);
 });
+
+// De la bitácora del 20 de agosto: alguien buscando Spiderman escribió
+// «angamos» —una avenida de Lima— y recibió «No entendí «angamos»», lo mismo
+// que habría recibido escribiendo teclas al azar. El lugar sí se reconocía como
+// desconocido; lo que pasaba es que la regla de palabras sin explicar contestaba
+// antes. Decir «no ubico ese lugar» es cierto y deja seguir; «no entendí» suena
+// a que la persona escribió mal.
+test('un lugar que no ubicamos no se trata como palabras sin sentido', async () => {
+  // Inventado a propósito: ningún título ni sede puede parecerse, así que el
+  // caso no depende de la cartelera del día.
+  for (const f of ['quiero ver algo en zurrumbanga', 'en zurrumbanga']) {
+    const r = await resolve(f);
+    const dicho = r.pregunta ?? r.mensaje ?? '';
+    assert.match(dicho, /No ubico/i, f);
+    assert.doesNotMatch(dicho, /No entendí/i, f);
+    // Y nunca un callejón: siempre queda por dónde seguir.
+    assert.ok(dicho.includes('?') || r.opciones?.length, `${f} no deja por dónde seguir`);
+  }
+});

@@ -24,9 +24,11 @@ test('las reglas se evalúan en el orden acordado', () => {
     'parecido-que-no-alcanzo',
     'palabras-sin-explicar',
     'varias-sedes-empatadas',
+    // Antes de la pregunta genérica: nombrar un lugar que no ubicamos merece
+    // que se lo diga, no que se empiece de cero.
+    'lugar-desconocido',
     'sin-pelicula',
     'sin-funciones-en-el-pais',
-    'lugar-desconocido',
     'falta-la-sede',
     'no-la-dan-en-esa-sede',
   ]);

@@ -589,39 +589,10 @@ const REGLAS = [
   },
 
   {
-    // No hay película: o se lista la cartelera de la sede, o se pregunta cuál.
-    nombre: 'sin-pelicula',
-    cuando: ({ intent }) => !intent.movie,
-    responde: async (ctx) => (await carteleraDeLaSede(ctx)) ?? preguntarQuePelicula(ctx),
-  },
-
-  {
-    // Antes de preguntar por la sede: si no tiene funciones en ningún lado, pedir
-    // un cine es hacerle perder el tiempo. Puede ser un estreno futuro o una que
-    // ya terminó su temporada, y son mensajes distintos.
-    nombre: 'sin-funciones-en-el-pais',
-    cuando: async (ctx) => !!ctx.intent.movie && !(await funcionesEnElPais(ctx)).length,
-    responde: async ({ intent, movieList, today }) => {
-      const parecidas = await mismoGenero(intent.movie, movieList, null, today);
-      const alternativas = parecidas.length ? parecidas : await loMasDado(movieList, null, today);
-      const genero = intent.movie.genre?.toLowerCase();
-      return {
-        estado: 'cartelera',
-        pregunta: intent.movie.comingSoon
-          ? `${intent.movie.title} todavía no se estrena.${
-              parecidas.length ? ` Mientras tanto, de ${genero} sí hay:` : ' Esto sí está en cartelera:'
-            }`
-          : `Lo siento, ${intent.movie.title} ya no está en cartelera.${
-              parecidas.length ? ` De ${genero} sí hay:` : ' Esto sí:'
-            }`,
-        opciones: alternativas.map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
-        intent,
-        contexto: recordar({ ...intent, movie: null }),
-      };
-    },
-  },
-
-  {
+    // Va antes de la pregunta genérica: si la persona nombró un lugar, decirle
+    // que no lo ubicamos usa lo que dijo. Preguntar «¿en qué ciudad vas al
+    // cine?» a secas es empezar de cero, y fue lo que recibió quien escribió
+    // «angamos» buscando una sede cerca.
     // Nombró un lugar que no reconocemos: decirlo es más honesto que listar sedes
     // de otra ciudad como si fueran la respuesta.
     nombre: 'lugar-desconocido',
@@ -659,6 +630,39 @@ const REGLAS = [
         opciones: ciudades.length ? ciudades.map((c) => ({ nombre: c })) : undefined,
         intent,
         contexto: recordar(intent),
+      };
+    },
+  },
+
+  {
+    // No hay película: o se lista la cartelera de la sede, o se pregunta cuál.
+    nombre: 'sin-pelicula',
+    cuando: ({ intent }) => !intent.movie,
+    responde: async (ctx) => (await carteleraDeLaSede(ctx)) ?? preguntarQuePelicula(ctx),
+  },
+
+  {
+    // Antes de preguntar por la sede: si no tiene funciones en ningún lado, pedir
+    // un cine es hacerle perder el tiempo. Puede ser un estreno futuro o una que
+    // ya terminó su temporada, y son mensajes distintos.
+    nombre: 'sin-funciones-en-el-pais',
+    cuando: async (ctx) => !!ctx.intent.movie && !(await funcionesEnElPais(ctx)).length,
+    responde: async ({ intent, movieList, today }) => {
+      const parecidas = await mismoGenero(intent.movie, movieList, null, today);
+      const alternativas = parecidas.length ? parecidas : await loMasDado(movieList, null, today);
+      const genero = intent.movie.genre?.toLowerCase();
+      return {
+        estado: 'cartelera',
+        pregunta: intent.movie.comingSoon
+          ? `${intent.movie.title} todavía no se estrena.${
+              parecidas.length ? ` Mientras tanto, de ${genero} sí hay:` : ' Esto sí está en cartelera:'
+            }`
+          : `Lo siento, ${intent.movie.title} ya no está en cartelera.${
+              parecidas.length ? ` De ${genero} sí hay:` : ' Esto sí:'
+            }`,
+        opciones: alternativas.map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
+        intent,
+        contexto: recordar({ ...intent, movie: null }),
       };
     },
   },

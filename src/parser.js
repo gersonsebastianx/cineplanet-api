@@ -1008,6 +1008,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     // Un cine nombrado con todas sus letras —«cp costanera»— que no existe
     // también está explicado: es un cine, sólo que no lo tenemos.
     ...(cineDesconocido ? tokens(cineDesconocido) : []),
+    // Y un lugar dicho tras «en» que no ubicamos: es un lugar, no una palabra
+    // sin sentido. Sin esto, «angamos» recibía «no entendí «angamos»» —lo mismo
+    // que teclas al azar— en vez de «no ubico «angamos»», porque la regla de
+    // palabras sin explicar contestaba antes que la del lugar desconocido.
+    ...(lugarDesconocido ? tokens(lugarDesconocido) : []),
     // «Real plaza» nombra varias sedes a la vez: explicado, aunque falte elegir.
     ...(sedesQueCoinciden ? tokens(/\ben\s+(?:el\s+|la\s+|los\s+|las\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i.exec(text)?.[1] ?? '') : []),
     ...(district ? tokens(district) : []),
