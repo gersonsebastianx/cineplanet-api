@@ -18,6 +18,12 @@ const MISSING = {
 const titulo = (s) => (s ?? '').replace(/\b\w/g, (c) => c.toUpperCase());
 /** Frases: sólo la primera letra ("31 de febrero no existe"). */
 const cuandoTexto = (dia, today) => (dia === today ? 'hoy' : sayDate(dia, today));
+/** «hoy, mañana y el viernes 3»: enumera sin afirmar más de lo que se miró. */
+const unir = (xs) => (xs.length < 2 ? (xs[0] ?? '') : `${xs.slice(0, -1).join(', ')} y ${xs.at(-1)}`);
+/** Cuántos días más de la misma película y sede se prueban si uno está agotado. */
+const DIAS_SIGUIENTES = 3;
+/** Y cuánto se dedica a eso: la función tiene 20 s y falta todo lo demás. */
+const PRESUPUESTO_DIAS_MS = 5000;
 const frase = (s) => (s ?? '').charAt(0).toUpperCase() + (s ?? '').slice(1);
 
 /**
@@ -1115,8 +1121,11 @@ async function conLugarPara({ intent, movieList, today }, dia, asientos, { exclu
           const opcion = { id: pelicula.id, titulo: pelicula.title, hora: f.time, lugar };
           if (lugar === 'juntas') return opcion;
           if (lugar === 'sueltas' && !separada) separada = opcion;
-        } catch {
+        } catch (err) {
           // Si no se puede leer el mapa, esa función no se ofrece como segura.
+          // Pero «agotada» sí es una lectura: Cineplanet contestó, y decir que
+          // no pudimos revisar sería falso cuando lo que pasa es que no hay nada.
+          if (err instanceof SalaAgotada) leidos += 1;
         }
       }
       return separada;
@@ -1202,68 +1211,117 @@ async function caminoDeCompra(ctx) {
     };
   }
 
+  const asientos = intent.seats ?? 2;
+  // El número sólo se nombra si la persona lo dijo: «no tiene lugar para 2» a
+  // quien nunca dijo cuántos iban es afirmar algo que no sabemos.
+  const paraCuantos = intent.seats != null && asientos > 1 ? ` para ${asientos}` : '';
+  const enVentana = (s) =>
+    (intent.from == null || s.minutes >= intent.from) && (intent.to == null || s.minutes <= intent.to);
+
+  // Mira las funciones de un día en orden y se queda con la primera que sirve.
   // Una función agotada no sirve de nada: se descarta y se sigue con la
   // siguiente. Antes se ofrecía igual, con botón de comprar y todo.
-  let elegida = null;
-  let mapa = null;
-  let agotadas = 0;
-  // Funciones con butacas libres, pero menos que las personas que van.
-  let sinLugar = 0;
-  let falloMapa = null;
-  let respaldo = null;
-  let sueltas = false;
-  const asientos = intent.seats ?? 2;
+  const revisarDia = async (lista) => {
+    const r = {
+      elegida: null,
+      mapa: null,
+      agotadas: 0,
+      // Funciones con butacas libres, pero menos que las personas que van.
+      sinLugar: 0,
+      falloMapa: null,
+      respaldo: null,
+    };
+    for (const candidata of lista) {
+      try {
+        const map = await seatMap(candidata.cinemaId, candidata.sessionId);
+        // Siempre se buscan hasta tres bloques distintos; que haya dos o uno lo
+        // decide la sala, no un umbral inventado.
+        const mapa = {
+          sala: map.screen,
+          libres: map.free,
+          total: map.total,
+          sugeridas: bestBlocks(map, asientos, 3),
+          filas: map.rows.map((f) => ({
+            fila: f.label,
+            ancho: f.width,
+            celdas: Array.from({ length: f.width }, (_, x) => {
+              const s = f.seats.find((q) => q.x === x);
+              return !s ? null : { n: s.number, id: s.id, libre: s.free, acc: s.accessible };
+            }),
+          })),
+        };
+        // Una sala sin lugar para todos no es una opción, aunque Cineplanet no
+        // la marque como agotada: a veces devuelve el plano normal con todo
+        // ocupado. Se ofreció así una función con cero butacas libres de 112
+        // —botón de comprar incluido— a alguien que pedía 6 entradas.
+        const lugar = cabida(map, asientos);
+        if (lugar === 'llena') {
+          if (map.free === 0) r.agotadas += 1;
+          else r.sinLugar += 1;
+          continue;
+        }
+        // Una función sin butacas juntas no sirve para el grupo: se guarda por
+        // si no hay nada mejor, y se sigue buscando.
+        if (lugar === 'sueltas') {
+          if (!r.respaldo) r.respaldo = { candidata, mapa };
+          continue;
+        }
+        r.elegida = candidata;
+        r.mapa = mapa;
+        break;
+      } catch (err) {
+        if (err instanceof SalaAgotada) {
+          r.agotadas += 1;
+          continue;
+        }
+        // Otro fallo del mapa no invalida la función: se ofrece igual y se avisa.
+        r.falloMapa = 'no pude cargar el mapa de butacas';
+        r.elegida = candidata;
+        break;
+      }
+    }
+    return r;
+  };
 
-  for (const candidata of elegidas) {
-    try {
-      const map = await seatMap(candidata.cinemaId, candidata.sessionId);
-      // Siempre se buscan hasta tres bloques distintos; que haya dos o uno lo
-      // decide la sala, no un umbral inventado.
-      mapa = {
-        sala: map.screen,
-        libres: map.free,
-        total: map.total,
-        sugeridas: bestBlocks(map, asientos, 3),
-        filas: map.rows.map((r) => ({
-          fila: r.label,
-          ancho: r.width,
-          celdas: Array.from({ length: r.width }, (_, x) => {
-            const s = r.seats.find((q) => q.x === x);
-            return !s ? null : { n: s.number, id: s.id, libre: s.free, acc: s.accessible };
-        }),
-        })),
-      };
-      // Una sala sin lugar para todos no es una opción, aunque Cineplanet no la
-      // marque como agotada: a veces devuelve el plano normal con todo ocupado.
-      // Se ofreció así una función con cero butacas libres de 112 —botón de
-      // comprar incluido— a alguien que pedía 6 entradas.
-      const lugar = cabida(map, asientos);
-      if (lugar === 'llena') {
-        if (map.free === 0) agotadas += 1;
-        else sinLugar += 1;
-        mapa = null;
-        continue;
+  let dia = await revisarDia(elegidas);
+  // Los días enteros donde nada sirvió, para poder nombrarlos. «Está agotada
+  // hoy» dicho de una película que hoy ni siquiera tiene funciones era falso.
+  const sinLugarEn = [];
+  let totalSinLugar = 0;
+  let motivoDia = null;
+  if (!dia.elegida && !dia.respaldo) {
+    // Antes de ofrecer otras películas: lo que pidió puede tener lugar al día
+    // siguiente. En una preventa el primer día suele agotarse primero y el
+    // resto no; de ahí salió: 5 funciones agotadas el 16 y 28 con lugar desde el 17.
+    sinLugarEn.push(elegidas[0].date);
+    totalSinLugar += dia.sinLugar;
+    const siguientes = [...new Set(disponibles.filter((s) => s.date > elegidas[0].date).map((s) => s.date))].slice(
+      0,
+      DIAS_SIGUIENTES,
+    );
+    const tope = Date.now() + PRESUPUESTO_DIAS_MS;
+    for (const d of siguientes) {
+      // Cortar acá no hace falsa ninguna frase: sólo se nombran los días que se
+      // llegaron a revisar.
+      if (Date.now() > tope) break;
+      const delDia = disponibles.filter((s) => s.date === d);
+      const lista = delDia.some(enVentana) ? delDia.filter(enVentana) : delDia;
+      const r = await revisarDia(lista);
+      if (r.elegida || r.respaldo) {
+        motivoDia = `${totalSinLugar > 0 ? `no tiene lugar${paraCuantos}` : 'está agotada'} ${unir(
+          sinLugarEn.map((x) => cuandoTexto(x, today)),
+        )}`;
+        dia = r;
+        elegidas = lista;
+        ajuste = 'dia-agotado';
+        break;
       }
-      // Una función sin butacas juntas no sirve para el grupo: se guarda por si
-      // no hay nada mejor, y se sigue buscando.
-      if (lugar === 'sueltas') {
-        if (!respaldo) respaldo = { candidata, mapa };
-        mapa = null;
-        continue;
-      }
-      elegida = candidata;
-      break;
-    } catch (err) {
-      if (err instanceof SalaAgotada) {
-        agotadas += 1;
-        continue;
-      }
-      // Otro fallo del mapa no invalida la función: se ofrece igual y se avisa.
-      falloMapa = 'no pude cargar el mapa de butacas';
-      elegida = candidata;
-      break;
+      sinLugarEn.push(d);
+      totalSinLugar += r.sinLugar;
     }
   }
+  let { elegida, mapa, agotadas, falloMapa, respaldo } = dia;
+  let sueltas = false;
   if (!elegida && respaldo) {
     elegida = respaldo.candidata;
     mapa = respaldo.mapa;
@@ -1273,13 +1331,15 @@ async function caminoDeCompra(ctx) {
     // Decir sólo "está llena" deja a la persona donde empezó. Lo que pregunta a
     // continuación es siempre lo mismo —«¿y qué película sí tiene lugar?»— así
     // que se responde antes de que lo pregunte.
-    // El número sólo se nombra si la persona lo dijo: «no tiene lugar para 2»
-    // a quien nunca dijo cuántos iban es afirmar algo que no sabemos.
-    const paraCuantos = intent.seats != null && asientos > 1 ? ` para ${asientos}` : '';
+    const dichos = unir(sinLugarEn.map((x) => cuandoTexto(x, today)));
     const porQue =
-      sinLugar > 0
-        ? `${intent.movie.title} no tiene lugar${paraCuantos} en ${intent.cinema.name} ${cuandoTexto(date, today)}`
-        : `${intent.movie.title} está agotada en ${intent.cinema.name} ${cuandoTexto(date, today)}`;
+      totalSinLugar > 0
+        ? `${intent.movie.title} no tiene lugar${paraCuantos} en ${intent.cinema.name} ${dichos}`
+        : `${intent.movie.title} está agotada en ${intent.cinema.name} ${dichos}`;
+    // Las otras películas se buscan para el día pedido, que puede no ser el que
+    // se revisó: se dice, o parecería que el día es el mismo.
+    const esteDia = sinLugarEn.length === 1 && sinLugarEn[0] === date;
+    const cuandoOtras = sinLugarEn.includes(date) ? '' : ` ${cuandoTexto(date, today)}`;
     const otras = await otrasConLugar(ctx, date, asientos);
     if (otras.length) {
       // Sólo se promete «juntas» si todas lo están. Cada opción dice lo suyo:
@@ -1290,7 +1350,7 @@ async function caminoDeCompra(ctx) {
         estado: 'cartelera',
         pregunta: `${porQue}. ${
           todasJuntas && paraCuantos ? `Con ${asientos} butacas juntas` : 'Con lugar'
-        } sí hay:`,
+        }${cuandoOtras} sí hay:`,
         opciones: otras.map((o) => ({
           nombre: o.titulo,
           detalle: o.lugar === 'juntas' || asientos === 1 ? o.hora : `${o.hora} · separados`,
@@ -1305,7 +1365,7 @@ async function caminoDeCompra(ctx) {
     return {
       estado: 'sin-cartelera',
       mensaje: otras.sePudoMirar
-        ? `${porQue}, y ninguna otra película tiene lugar${paraCuantos} ahí ese día. ¿Probamos otro día u otro cine?`
+        ? `${porQue}, y ninguna otra película tiene lugar${paraCuantos} ahí ${esteDia ? 'ese día' : cuandoTexto(date, today)}. ¿Probamos otro día u otro cine?`
         : `${porQue}. No pude revisar las butacas de las demás películas: Cineplanet no las está mostrando. ¿Probamos otro día u otro cine?`,
       intent,
       contexto: recordar({ ...intent, movie: null }),
@@ -1371,6 +1431,7 @@ async function caminoDeCompra(ctx) {
       fechaPedida: intent.date ? sayDate(intent.date, today) : null,
       ventana: intent.said.time,
       personas: asientos,
+      motivoDia,
     },
     funcion: {
       fecha: elegida.date,

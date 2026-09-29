@@ -638,6 +638,9 @@ function responder(r) {
     decir(`No hay ${p.pelicula} ${p.ventana ?? 'a esa hora'} en ${p.cine}. Lo más cercano:`);
   } else if (r.ajuste === 'dia' || r.ajuste === 'dia-y-hora') {
     decir(`${p.fechaPedida ?? 'Ese día'} no hay ${p.pelicula} en ${p.cine}. La siguiente:`);
+  } else if (r.ajuste === 'dia-agotado') {
+    // «Ese día no hay…» sería falso: había funciones, pero sin lugar.
+    decir(`${p.pelicula} ${p.motivoDia} en ${p.cine}. La siguiente con lugar:`);
   } else if (r.ajuste === 'ultimo-dia') {
     decir(`${p.pelicula} ya no llega hasta ${p.fechaPedida ?? 'esa fecha'} en ${p.cine}. La última función:`);
   } else {
