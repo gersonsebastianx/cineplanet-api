@@ -482,6 +482,15 @@ function acotarPersonas(n) {
   return n >= 1 && n <= 8 ? n : null;
 }
 
+/**
+ * «doom» es el comienzo de «doomsday»: quien escribe un pedazo del título casi
+ * nunca lo hace por error. Hacen falta cuatro letras —con tres coincide con
+ * demasiadas palabras— y que a la palabra le sobren tres o más: si sobran una o
+ * dos es un plural o un tipeo, y de eso ya se ocupa `closeEnough`. Cuenta como
+ * parecido, no como certeza: se propone la película y se pide confirmar.
+ */
+const comienzoDe = (q, w) => q.length >= 4 && w.length >= q.length + 3 && w.startsWith(q);
+
 /** Puntúa por tokens distintivos compartidos: "real plaza salaverry" → CP Salaverry. */
 function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {}) {
   const list = tokens(text);
@@ -505,7 +514,7 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
     const aprox = have.filter(
       (w) =>
         !want.has(w) &&
-        list.some((q) => !COMUNES.has(q) && q.length >= 5 && closeEnough(q, w)),
+        list.some((q) => !COMUNES.has(q) && ((q.length >= 5 && closeEnough(q, w)) || comienzoDe(q, w))),
     );
     const haveGlued = have.join('');
     // "spiderman" por "Spider man Un nuevo día": el título escrito todo junto.

@@ -653,3 +653,22 @@ test('cuántos van tampoco elige película', () => {
   assert.equal(leer('somos 3').movie, null);
   assert.equal(leer('3 entradas').movie, null);
 });
+
+// Del 28 de septiembre: alguien buscó «Doom» —el comienzo de «Avengers:
+// Doomsday»— y recibió «No entendí «doom»», sin ninguna pista de que la película
+// estaba. Un comienzo largo de una palabra del título propone la película; no la
+// afirma, porque un parecido no es una certeza. Título inventado: no depende de
+// lo que haya en cartelera.
+test('el comienzo de una palabra del título propone la película, sin afirmarla', () => {
+  const conTrampa = [...ms, { id: 'TRAMPA', title: 'Frostmourne Chronicles', slug: 'frost', cinemas: [] }];
+  const leerlo = (f) => parse(f, { movies: conTrampa, cinemas: cs });
+  for (const f of ['frost', 'frostm', 'quiero ver frostmo']) {
+    const r = leerlo(f);
+    assert.equal(r.movie?.id, 'TRAMPA', f);
+    assert.equal(r.movieConfianza, 'media', `${f}: un comienzo no es una certeza`);
+  }
+  // Tres letras no son un comienzo: coinciden con demasiadas palabras.
+  assert.notEqual(leerlo('fro').movie?.id, 'TRAMPA');
+  // Y decir el título entero sigue siendo certeza.
+  assert.equal(leerlo('frostmourne chronicles').movieConfianza, 'alta');
+});
