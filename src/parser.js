@@ -72,7 +72,7 @@ const COMUNES = new Set(
     'vida vive vino visto veces vez vaya vale valor verde viene vuelta ' +
     'ante anda ando anos años arte alto alta area ' +
     'bien bueno buena base bajo baja boca ' +
-    'cada calle campo carta carro casi cerca cielo cien cine claro come cuando cuenta ' +
+    'cada calle campo carta carro casi cerca cielo cien cine claro come cuando cuenta cualquiera ' +
     'dado dice dias dice dijo dime dios dolor duda dura ' +
     'edad ella ellos ente entre eran eres esos esta este esto ' +
     'fin final fue fuera fuerza forma frente fondo ' +
@@ -240,7 +240,7 @@ const PREGUNTA_PAIS =
 export const generoPorNombre = (dice) => GENEROS.find((g) => g.dice === dice) ?? null;
 
 const GENEROS = [
-  { pide: /\b(nin[oa]s?|infantil|familiar|en\s+familia|toda\s+la\s+familia|mis\s+hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
+  { pide: /\b(nin[oa]s?|infantil|familiar|en\s+familia|toda\s+la\s+familia|para\s+la\s+familia|mis\s+hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
   { pide: /\b(terror|miedo|susto|horror)\b/, generos: ['Terror'], dice: 'de terror', nada: 'nada de terror' },
   { pide: /\b(accion|aventura)\b/, generos: ['Acción'], dice: 'de acción', nada: 'nada de acción' },
   { pide: /\b(comedia|graciosa|risa|chistosa)\b/, generos: ['Comedia'], dice: 'de comedia', nada: 'ninguna comedia' },
@@ -751,7 +751,8 @@ const NO_OTRA = /\bno\s+(quiero|busco|me\s+interesa|necesito)\s+(otra|otras)\b/;
 const ACOMPANADO =
   /\b(con\s+)?(mi|un[ao])\s+(amig[ao]|herman[ao]|prim[ao]|mama|papa|madre|padre|hij[ao]|novi[ao]|espos[ao]|pareja|enamorad[ao]|ti[ao]|abuel[ao])\b/;
 // En plural no dice cuántos: mejor preguntar que suponer.
-const EN_GRUPO_VAGO = /\b(con\s+)?(mis|unos|unas)\s+(amig[oa]s|herman[oa]s|prim[oa]s|hij[oa]s)\b/;
+const EN_GRUPO_VAGO =
+  /\b(con\s+)?(mis|unos|unas)\s+(amig[oa]s|herman[oa]s|prim[oa]s|hij[oa]s)\b|\b(con\s+)?(mi|toda\s+mi|toda\s+la)\s+familia\b|\ben\s+familia\b/;
 const PAREJA = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/;
 
 /** Minúsculas y sin tildes, pero con la puntuación: «no, quiero» ≠ «no quiero». */
@@ -858,13 +859,17 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // manda el título y no la compañía.
   const tituloEntero = movies.some((m) => {
     const titulo = norm(m.title);
-    return titulo.length >= 6 && t.includes(titulo);
+    return t === titulo || (titulo.length >= 6 && t.includes(titulo));
   });
   if (!tituloEntero) {
     for (const quien of [ACOMPANADO, EN_GRUPO_VAGO, PAREJA]) {
       const dicho = quien.exec(t)?.[0];
       if (dicho) for (const w of tokens(dicho)) used.add(w);
     }
+    // Ni el género que se pidió. «terror» es lo que más escribe quien busca algo
+    // de miedo, y dejó de significar género cuando entró una película con esa
+    // palabra en el título; «horror» y «familiar» se colaban por parecido.
+    for (const w of tokens(dichoGenero)) used.add(w);
   }
   const rest = tokens(text)
     .filter(
@@ -1039,6 +1044,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...tokens(grupo?.[0] ?? ''),
     ...tokens(acompanado?.[0] ?? ''),
     ...(enGrupoVago ? ['amigos', 'amigas', 'hermanos', 'primos', 'hijos'] : []),
+    // Lo dicho tal cual, para no dejar suelta «toda» en «con toda mi familia».
+    ...(enGrupoVago ? tokens(EN_GRUPO_VAGO.exec(t2)?.[0] ?? '') : []),
     ...(solo ? ['solo', 'sola', 'ire', 'voy', 'yo', 'nomas', 'vengo', 'estoy'] : []),
     ...(pareja ? ['mi', 'con', 'novia', 'novio', 'esposa', 'esposo', 'pareja'] : []),
     ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),

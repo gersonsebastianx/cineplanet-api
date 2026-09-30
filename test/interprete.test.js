@@ -672,3 +672,49 @@ test('el comienzo de una palabra del título propone la película, sin afirmarla
   // Y decir el título entero sigue siendo certeza.
   assert.equal(leerlo('frostmourne chronicles').movieConfianza, 'alta');
 });
+
+// El 29 de septiembre, al barrer el catálogo: entraron «Terror en el Amazonas» y
+// «Album de Familia», y con eso «terror» —la palabra más común de quien busca
+// género— dejó de significar género y pasó a elegir entre esos títulos, igual
+// que «con mi familia» eligió «Album de Familia» con certeza alta. Es la misma
+// clase que «puente piedra» y «amigo»: un estreno desmiente una suposición.
+// Títulos inyectados: no dependen de lo que haya en cartelera.
+test('una palabra de género o de familia no elige película por estar en un título', () => {
+  const fuera = /^(terror en la isla zeta|album de familia)$/i;
+  const conTrampa = [
+    ...ms.filter((m) => !fuera.test(m.title.trim())),
+    { id: 'T-TERROR', title: 'Terror en la Isla Zeta', slug: 'terror', cinemas: [] },
+    { id: 'T-FAMILIA', title: 'Album de Familia', slug: 'familia', cinemas: [] },
+  ];
+  const leerlo = (f) => parse(f, { movies: conTrampa, cinemas: cs });
+  const secuestradas = [
+    'terror', 'quiero ver algo de terror', 'una peli de horror', 'algo de susto',
+    'familiar', 'una peli familiar',
+    'con mi familia', 'voy con mi familia', 'con toda mi familia', 'para ver en familia',
+    'algo para toda la familia', 'una peli para la familia',
+  ].filter((f) => leerlo(f).movie?.id?.startsWith('T-'));
+  assert.deepEqual(secuestradas, [], 'estas frases eligieron una película por una palabra del título');
+  // El género se sigue entendiendo.
+  assert.equal(leerlo('quiero ver algo de terror').genero?.dice, 'de terror');
+  // Y decir el título, entero, sigue mandando.
+  assert.equal(leerlo('terror en la isla zeta').movie?.id, 'T-TERROR');
+  assert.equal(leerlo('album de familia').movie?.id, 'T-FAMILIA');
+});
+
+test('«cualquiera» es «me da igual», no «A Cualquier Precio»', () => {
+  const conTrampa = [
+    ...ms.filter((m) => !/^a cualquier precio$/i.test(m.title.trim())),
+    { id: 'T-PRECIO', title: 'A Cualquier Precio', slug: 'precio', cinemas: [] },
+  ];
+  assert.notEqual(parse('cualquiera', { movies: conTrampa, cinemas: cs }).movie?.id, 'T-PRECIO');
+  assert.equal(parse('a cualquier precio', { movies: conTrampa, cinemas: cs }).movie?.id, 'T-PRECIO');
+});
+
+test('«con mi familia» cuenta quién viene y no deja palabras sin explicar', () => {
+  for (const f of ['con mi familia', 'voy con mi familia', 'con toda mi familia']) {
+    const r = leer(f);
+    assert.deepEqual(r.sobrantes, [], `«${f}» dejó sin explicar: ${r.sobrantes}`);
+    // En plural o familia no dice cuántos: se pregunta, no se supone.
+    assert.equal(r.seats, null, f);
+  }
+});
