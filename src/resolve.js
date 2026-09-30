@@ -1137,7 +1137,11 @@ async function conLugarPara({ intent, movieList, today }, dia, asientos, { exclu
     ...conLugar.filter((o) => o.lugar === 'juntas'),
     ...conLugar.filter((o) => o.lugar === 'sueltas'),
   ].slice(0, limite);
-  opciones.sePudoMirar = leidos > 0;
+  // «No pude mirar» sólo vale si había algo que mirar. Un día sin otras
+  // películas no es una falla de Cineplanet: no hay nada que revisar, y decir
+  // que no nos muestra las butacas era falso.
+  opciones.sinOtras = candidatas.length === 0;
+  opciones.sePudoMirar = opciones.sinOtras || leidos > 0;
   return opciones;
 }
 
@@ -1364,7 +1368,9 @@ async function caminoDeCompra(ctx) {
     }
     return {
       estado: 'sin-cartelera',
-      mensaje: otras.sePudoMirar
+      mensaje: otras.sinOtras
+        ? `${porQue}, y no hay otras funciones ahí ${esteDia ? 'ese día' : cuandoTexto(date, today)}. ¿Probamos otro día u otro cine?`
+        : otras.sePudoMirar
         ? `${porQue}, y ninguna otra película tiene lugar${paraCuantos} ahí ${esteDia ? 'ese día' : cuandoTexto(date, today)}. ¿Probamos otro día u otro cine?`
         : `${porQue}. No pude revisar las butacas de las demás películas: Cineplanet no las está mostrando. ¿Probamos otro día u otro cine?`,
       intent,
