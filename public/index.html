@@ -684,7 +684,7 @@ async function consultar(valor, elegido = null) {
     // Si lo pulsado resultó ser una película que ya salió de cartelera, se
     // borra del historial: la caducidad por fecha no alcanza cuando una película
     // se va antes de tiempo.
-    if (/ya no está en cartelera/i.test(datos.pregunta ?? '')) olvidarBusqueda(valor);
+    if (/ya no (está en cartelera|tiene funciones)/i.test(datos.pregunta ?? '')) olvidarBusqueda(valor);
     pintarSugerencias();
   }
 }

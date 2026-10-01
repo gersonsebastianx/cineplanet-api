@@ -717,7 +717,12 @@ const REGLAS = [
           ? `${intent.movie.title} todavía no se estrena.${
               parecidas.length ? ` Mientras tanto, de ${genero} sí hay:` : ' Esto sí está en cartelera:'
             }`
-          : `Lo siento, ${intent.movie.title} ya no está en cartelera.${
+          // «Ya no tiene funciones» y no «ya no está en cartelera»: Cineplanet la
+          // sigue listando, y lo único que sabemos es que no queda ninguna
+          // función a la venta. Una película cuya última función empezó hace
+          // media hora está en cartelera todavía. (La web busca este texto para
+          // olvidar la búsqueda guardada: si cambia acá, cambia allá.)
+          : `Lo siento, ${intent.movie.title} ya no tiene funciones.${
               parecidas.length ? ` De ${genero} sí hay:` : ' Esto sí:'
             }`,
         opciones: alternativas.map((m) => ({ nombre: m.titulo, peliculaId: m.id })),
