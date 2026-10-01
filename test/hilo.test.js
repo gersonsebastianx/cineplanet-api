@@ -170,8 +170,17 @@ test('esa pregunta no borra la función que ya se tenía', async () => {
 // y otra vez la misma. «Otro cine» se entendía desde agosto; «otra película»,
 // no.
 test('«otra película» ofrece otras, no repite la misma', async (t) => {
-  const lista = await resolve(`que dan mañana en ${(await cinemas())[0].name}`);
-  if (lista.estado !== 'cartelera' || lista.opciones.length < 2) return t.skip('sin cartelera suficiente');
+  // La primera sede de la lista puede ser una chica con una sola película
+  // mañana —CP Alcazar— y la prueba se saltaba sola: se busca una que sirva.
+  let lista = null;
+  for (const c of await cinemas()) {
+    const intento = await resolve(`que dan mañana en ${c.name}`);
+    if (intento.estado === 'cartelera' && intento.opciones?.length >= 2) {
+      lista = intento;
+      break;
+    }
+  }
+  if (!lista) return t.skip('ninguna sede tiene dos películas mañana');
   const op = lista.opciones[0];
   const tarjeta = await resolve(op.nombre, { contexto: lista.contexto, elegido: { peliculaId: op.peliculaId } });
 
