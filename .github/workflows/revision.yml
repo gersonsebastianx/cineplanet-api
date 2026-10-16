@@ -50,8 +50,14 @@ jobs:
 
       # Recorre las 43 sedes buscando bucles, callejones, afirmaciones
       # inventadas y enlaces que no corresponden a la función que anuncian.
+      # `always()` a propósito: si las pruebas fallan, el barrido tiene que correr
+      # igual. Entre el 9 y el 15 de octubre las pruebas estuvieron rojas catorce
+      # corridas seguidas por una película que salió de cartelera, y el barrido
+      # —que mira la conversación entera— se saltó todas: se perdió justo lo que
+      # decía si la web estaba bien para la gente. El trabajo sigue fallando por
+      # las pruebas; sólo deja de esconder lo demás.
       - name: Barrido
-        if: steps.cineplanet.outputs.vivo == 'true'
+        if: always() && steps.cineplanet.outputs.vivo == 'true'
         run: npm run barrido
 
       - name: Cineplanet rechazo a GitHub
