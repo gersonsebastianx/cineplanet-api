@@ -602,6 +602,8 @@ async function pedirCine(bloque) {
 
 function responder(r) {
   if (r.contexto) contexto = r.contexto;
+  // Lo que se preguntó de la película —duración, clasificación— se contesta antes.
+  if (r.aparte) decir(r.aparte);
   if (r.estado === 'falta') return decir(r.pregunta);
   if (r.estado === 'cartelera' || r.estado === 'confirmar') {
     decir(r.pregunta);
@@ -637,7 +639,27 @@ function responder(r) {
   if (r.ajuste === 'hora') {
     decir(`No hay ${p.pelicula} ${p.ventana ?? 'a esa hora'} en ${p.cine}. Lo más cercano:`);
   } else if (r.ajuste === 'dia' || r.ajuste === 'dia-y-hora') {
-    decir(`${p.fechaPedida ?? 'Ese día'} no hay ${p.pelicula} en ${p.cine}. La siguiente:`);
+    if (!p.fechaPedida) {
+      // Nadie nombró un día: quería hoy. «Ese día no hay…» no dice nada.
+      if (r.hoyEn?.length) {
+        // Lo que más sirve para decidir: dónde sí se puede ver esta misma noche.
+        decir(`Hoy ya no quedan funciones de ${p.pelicula} en ${p.cine}, pero hoy sí hay en:`);
+        const fila = el('div', 'opciones');
+        for (const c of r.hoyEn) {
+          const b = el('button', null, c.nombre);
+          b.append(el('small', null, `${c.hora} · ${String(c.km).replace('.', ',')} km`));
+          b.type = 'button';
+          b.addEventListener('click', () => elegir({ id: c.id, nombre: c.nombre }));
+          fila.append(b);
+        }
+        chat.append(fila);
+        decir(`En ${p.cine}, la siguiente es:`);
+      } else {
+        decir(`Hoy ya no quedan funciones de ${p.pelicula} en ${p.cine}. La siguiente:`);
+      }
+    } else {
+      decir(`${p.fechaPedida} no hay ${p.pelicula} en ${p.cine}. La siguiente:`);
+    }
   } else if (r.ajuste === 'dia-agotado') {
     // «Ese día no hay…» sería falso: había funciones, pero sin lugar.
     decir(`${p.pelicula} ${p.motivoDia} en ${p.cine}. La siguiente con lugar:`);

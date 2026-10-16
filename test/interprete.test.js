@@ -367,17 +367,25 @@ test('«real plaza» a secas sigue sin elegir una sede al azar', () => {
 
 // ── Títulos originales: acá se dice "insidious", no "La Noche del Demonio" ───
 
+// El alias «insidious» solo vale si la película peruana está en cartelera, así
+// que estas pruebas dependían de que *La Noche del Demonio* siguiera ahí. Salió
+// de cartelera y tres pruebas quedaron rojas catorce corridas seguidas. Se
+// inyecta el título para que el mecanismo se pruebe siempre.
+const sinNoche = ms.filter((m) => !/noche del demonio/i.test(m.title));
+const conNoche = [...sinNoche, { id: 'T-NOCHE', title: 'La Noche Del Demonio Están Entre Nosotros', slug: 'noche', cinemas: [] }];
+const leerNoche = (frase) => parse(frase, { movies: conNoche, cinemas: cs });
+
 test('«insidious» encuentra La Noche del Demonio', () => {
   // Reportado: estaba en cartelera y se contestó que no. La API de Cineplanet
   // no trae el título original en ningún campo, así que el puente es una tabla.
-  const r = leer('Quiero ver insidious');
+  const r = leerNoche('Quiero ver insidious');
   assert.match(r.movie?.title ?? '', /Noche Del Demonio/i);
   assert.equal(r.movieConfianza, 'alta', 'nombrar el título original no es tantear');
   assert.deepEqual(r.sobrantes, [], 'lo escrito en inglés queda explicado');
 });
 
 test('el título original convive con el resto de la frase', () => {
-  const r = leer('insidious en cp norte mañana');
+  const r = leerNoche('insidious en cp norte mañana');
   assert.match(r.movie?.title ?? '', /Noche Del Demonio/i);
   assert.equal(r.cinema?.name, 'CP Norte');
 });
@@ -397,9 +405,9 @@ test('un título original mal escrito igual llega', () => {
   // Lo trajo la bitácora en su primer minuto de vida: alguien escribió
   // "insidous", sin la segunda i, y la tabla exigía la palabra exacta.
   for (const f of ['quiero ver insidous', 'insidius en cp norte', 'the odisey']) {
-    assert.notEqual(leer(f).movie, null, f);
+    assert.notEqual(leerNoche(f).movie, null, f);
   }
-  assert.deepEqual(leer('quiero ver insidous').sobrantes, []);
+  assert.deepEqual(leerNoche('quiero ver insidous').sobrantes, []);
 });
 
 // ── Responder la ciudad no puede ser un callejón sin salida ─────────────────
@@ -717,4 +725,158 @@ test('«con mi familia» cuenta quién viene y no deja palabras sin explicar', (
     // En plural o familia no dice cuántos: se pregunta, no se supone.
     assert.equal(r.seats, null, f);
   }
+});
+
+// ── Sesión real del 13 de octubre ────────────────────────────────────────────
+//
+// Alguien intentó decidir qué ver esa noche y la web no le sirvió. Cinco
+// respuestas seguidas fueron una pregunta absurda o un «no entendí»:
+//   «quiero ver coyote»            → «¿Te refieres a Coyote vs Acme?»
+//   «También sabes si prime?»      → «¿Te refieres a Hope el primer impacto?»
+//   «Ya son las 18:22»             → «No entendí «18:22»»
+//   «…18 horas con 22 minutos»     → «¿Te refieres a Godzilla Minus Zero?»
+// Los títulos se inventan o se inyectan: nada de esto depende de la cartelera.
+
+const CATALOGO_INVENTADO = [
+  { id: 'T-QUETZAL', title: 'Quetzalcoatl vs Dynamo', slug: 'quetzal', cinemas: [] },
+  { id: 'T-DOS-A', title: 'Zarzamora Bonita', slug: 'zarza-a', cinemas: [] },
+  { id: 'T-DOS-B', title: 'Zarzamora Oscura', slug: 'zarza-b', cinemas: [] },
+  { id: 'T-PRIMER', title: 'Hope el Primer Impacto', slug: 'primer', cinemas: [] },
+  { id: 'T-MINUS', title: 'Godzilla Minus Zero', slug: 'minus', cinemas: [] },
+];
+const sinInventados = ms.filter((m) => !/quetzal|zarzamora|primer impacto|godzilla minus/i.test(m.title));
+const leerInv = (frase) => parse(frase, { movies: [...sinInventados, ...CATALOGO_INVENTADO], cinemas: cs });
+
+test('una palabra distintiva que sólo está en un título lo elige, sin preguntar', () => {
+  for (const f of ['quetzalcoatl', 'quiero ver quetzalcoatl', 'Iré a Plaza San Miguel y quiero ver quetzalcoatl']) {
+    const r = leerInv(f);
+    assert.equal(r.movie?.id, 'T-QUETZAL', f);
+    assert.equal(r.movieConfianza, 'alta', `${f}: nombrar la única palabra rara es nombrar la película`);
+    assert.deepEqual(r.movieSugerencias, [], f);
+  }
+});
+
+test('esa regla no vale si la palabra está en dos títulos, ni si es corta o común', () => {
+  // Dos títulos con «zarzamora»: no hay una sola película que elegir.
+  const dos = leerInv('quiero ver zarzamora');
+  assert.notEqual(dos.movieConfianza, 'alta', 'con dos candidatas no hay certeza');
+  // Una palabra corta no es distintiva.
+  const corto = parse('quiero ver sol', {
+    movies: [...sinInventados, { id: 'T-SOL', title: 'Sol Rojo Montaña Azul', slug: 's', cinemas: [] }],
+    cinemas: cs,
+  });
+  assert.notEqual(corto.movie?.id, 'T-SOL', 'tres letras no son una palabra distintiva');
+});
+
+test('«prime» y «doblada» preguntan por el formato, no por una película parecida', () => {
+  for (const f of ['También sabes si prime?', 'hay prime', 'quiero verla en prime']) {
+    const r = leerInv(f);
+    assert.notEqual(r.movie?.id, 'T-PRIMER', `«${f}» eligió «Hope el Primer Impacto»`);
+    // En la sesión real no fue una elección sino la pregunta «¿Te refieres a…?».
+    assert.ok(
+      !r.movieSugerencias.some((m) => m.id === 'T-PRIMER'),
+      `«${f}» propuso «Hope el Primer Impacto»`,
+    );
+    assert.equal(r.formato?.valor, 'PRIME', f);
+  }
+  // Y decir el título entero sigue funcionando.
+  assert.equal(leerInv('hope el primer impacto').movie?.id, 'T-PRIMER');
+});
+
+test('«ya son las 18:22» dice qué hora es: se busca desde entonces', () => {
+  const r = leerInv('Ya son las 18:22');
+  assert.equal(r.from, 18 * 60 + 22);
+  assert.equal(r.to, 24 * 60);
+  assert.deepEqual(r.sobrantes, [], '«18:22» no es una palabra sin explicar');
+});
+
+test('«18 horas con 22 minutos» es 18:22, y «minutos» no es «Minus»', () => {
+  const r = leerInv('Me refiero que ya son las 18 horas con 22 minutos');
+  assert.notEqual(r.movie?.id, 'T-MINUS', 'eligió «Godzilla Minus Zero» por «minutos»');
+  assert.equal(r.from, 18 * 60 + 22);
+  assert.deepEqual(r.sobrantes, [], r.sobrantes.join(' '));
+});
+
+test('una hora escrita con dos puntos se entiende aunque no diga «a las»', () => {
+  const r = leerInv('quiero ver quetzalcoatl 19:30');
+  assert.ok(r.from != null && r.from <= 19 * 60 + 30 && r.to >= 19 * 60 + 30, `from=${r.from} to=${r.to}`);
+  assert.equal(r.movie?.id, 'T-QUETZAL');
+});
+
+test('«Real plaza» y «Plaza» dentro de un nombre de sede no son palabras sin explicar', () => {
+  // Sesión del 13 de octubre: «Coyote en Real plaza Salaverry» preguntaba «¿te
+  // refieres a…?» y «Plaza San Miguel» avisaba «no entendí «plaza»»: las dos
+  // palabras del centro comercial bajaban la certeza de una película que se
+  // había nombrado completa.
+  for (const [f, sede] of [
+    ['quiero ver quetzalcoatl en Real plaza Salaverry', 'CP Salaverry'],
+    ['Iré a Plaza San Miguel y quiero ver quetzalcoatl', 'CP San Miguel'],
+  ]) {
+    const r = leerInv(f);
+    assert.equal(r.cinema?.name, sede, f);
+    assert.equal(r.movie?.id, 'T-QUETZAL', f);
+    assert.equal(r.movieConfianza, 'alta', `${f}: la película se nombró completa`);
+    assert.deepEqual(r.sobrantes, [], `${f} dejó sin explicar: ${r.sobrantes}`);
+  }
+});
+
+// ── Lote de revisión del 15 de octubre ───────────────────────────────────────
+// Frases corrientes que alguien escribe y que no servían.
+
+test('«en español», «en inglés» y «en 3D» son idioma o formato, no un lugar', () => {
+  // «peliculas en español» respondía «No ubico «español»»: la palabra después
+  // de «en» se tomaba por un lugar que no conocemos.
+  const casos = [
+    ['peliculas en español', 'idioma', 'DOBLADA'],
+    ['coyote vs acme en ingles', 'idioma', 'SUBTITULAD'],
+    ['hay funciones en ingles en san miguel', 'idioma', 'SUBTITULAD'],
+    ['funciones en 3d', 'formato', '3D'],
+    ['quiero verla en xtreme', 'formato', 'XTREME'],
+  ];
+  for (const [f, campo, valor] of casos) {
+    const r = leerInv(f);
+    assert.equal(r.lugarDesconocido, null, `«${f}» tomó el idioma o el formato por un lugar: ${r.lugarDesconocido}`);
+    assert.equal(r[campo]?.valor, valor, f);
+  }
+});
+
+test('«quiero reír», «suspenso», «ciencia ficción» y «aventura» son géneros', () => {
+  const casos = [
+    ['quiero reir', 'Comedia'],
+    ['algo divertido', 'Comedia'],
+    ['una de suspenso', 'Thriller'],
+    ['algo de thriller', 'Thriller'],
+    ['ciencia ficcion', 'Ficción'],
+    ['una de fantasia', 'Fantasía'],
+    ['una de aventura', 'Aventura'],
+  ];
+  for (const [f, genero] of casos) {
+    const r = leerInv(f);
+    assert.ok(r.genero?.generos.includes(genero), `«${f}» no se leyó como ${genero}: ${JSON.stringify(r.genero)}`);
+    assert.deepEqual(r.sobrantes, [], `«${f}» dejó sin explicar: ${r.sobrantes}`);
+  }
+});
+
+test('despedirse no es una consulta: «chau» y «hasta luego» no dan «no entendí»', () => {
+  for (const f of ['chau', 'chao', 'adios', 'hasta luego', 'nos vemos']) {
+    assert.equal(leerInv(f).saludo, 'cortesia', f);
+  }
+});
+
+test('preguntar por la duración, la clasificación o la trama se reconoce', () => {
+  assert.equal(leerInv('cuanto dura quetzalcoatl').pideDatos?.includes('duracion'), true);
+  assert.equal(leerInv('que clasificacion tiene quetzalcoatl').pideDatos?.includes('clasificacion'), true);
+  assert.equal(leerInv('es para niños quetzalcoatl vs dynamo').pideDatos?.includes('clasificacion'), true);
+  assert.equal(leerInv('de que trata quetzalcoatl').pideDatos?.includes('trama'), true);
+  // Y no se confunde con pedir una película para niños.
+  assert.ok(!leerInv('algo para niños').pideDatos?.length);
+  for (const f of ['cuanto dura quetzalcoatl', 'de que trata quetzalcoatl']) {
+    assert.deepEqual(leerInv(f).sobrantes, [], `«${f}» dejó palabras sin explicar`);
+  }
+});
+
+test('«temprano» es una franja: antes de media tarde', () => {
+  const r = leerInv('una funcion temprano');
+  assert.equal(r.from, 0);
+  assert.ok(r.to >= 12 * 60 && r.to <= 16 * 60, `to=${r.to}`);
 });

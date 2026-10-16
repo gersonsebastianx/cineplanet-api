@@ -163,6 +163,43 @@ function funcionesEnElPais(ctx) {
   return ctx.cache.pais;
 }
 
+/** Hasta dónde se ofrece «hoy sí hay en…»: más lejos que esto no es una alternativa. */
+const MAX_KM_HOY = 25;
+
+/**
+ * Sedes cercanas donde la película **todavía** tiene función hoy.
+ *
+ * Existe por una sesión real: a las 18:22 alguien quería ver algo esa noche, en
+ * una sede ya no quedaba nada hoy y la web contestó «mañana 14:20» sin decirle
+ * que en otra, a diez kilómetros, había función a las 19:25. Es pura —recibe las
+ * funciones ya filtradas— para poder probarla sin depender de la hora del día.
+ *
+ * @param {object} o
+ * @param {Array}  o.funciones  funciones a la venta de la película, en todo el país
+ * @param {Array}  o.cinemas    sedes, con lat/lon
+ * @param {{lat:number,lon:number}} o.origen  desde dónde se mide
+ * @param {string} o.hoy        fecha de hoy en Lima
+ * @param {number|null} [o.from] minuto del día desde el que sirve
+ * @param {number|null} [o.to]   minuto del día hasta el que sirve
+ * @param {string|null} [o.excluir] sede de la que se viene
+ */
+export function sedesConFuncionHoy({ funciones, cinemas, origen, hoy, from = null, to = null, excluir = null, limite = 3, maxKm = MAX_KM_HOY }) {
+  if (!origen) return [];
+  const primera = new Map(); // sede → su primera función que sirve
+  for (const f of funciones) {
+    if (f.date !== hoy || f.cinemaId === excluir) continue;
+    if (from != null && f.minutes < from) continue;
+    if (to != null && f.minutes > to) continue;
+    const previa = primera.get(f.cinemaId);
+    if (!previa || f.minutes < previa.minutes) primera.set(f.cinemaId, f);
+  }
+  const sedes = [...primera.keys()].map((id) => cinemas.find((c) => c.id === id)).filter(Boolean);
+  return nearest(sedes, origen, sedes.length)
+    .filter((c) => c.km <= maxKm)
+    .slice(0, limite)
+    .map((c) => ({ id: c.id, nombre: c.name, ciudad: c.city, km: c.km, hora: primera.get(c.id).time }));
+}
+
 /** Las funciones de esa película en esa sede, también una sola vez. */
 function funcionesEnLaSede(ctx) {
   ctx.cache.sede ??= showtimes({
@@ -384,6 +421,16 @@ const REGLAS = [
     cuando: ({ fresco }) => !!fresco.saludo,
     responde: ({ fresco, intent }) => {
       const abre = fresco.saludo === 'saludo' ? 'Hola. ' : '';
+      // Despedirse no pide nada: contestar «dime la película…» a un «chau» es no
+      // haber escuchado. Se cierra bien y se deja la puerta abierta.
+      if (fresco.despedida) {
+        return {
+          estado: 'falta',
+          pregunta: '¡Que disfrutes la función! Si quieres ver otra cosa, dime cuál.',
+          intent,
+          contexto: recordar(intent),
+        };
+      }
       return {
         estado: 'falta',
         pregunta: intent.cinema
@@ -860,6 +907,15 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
   const enFranja = (s) =>
     (intent.from == null && intent.to == null) ||
     (s.minutes >= (intent.from ?? 0) && s.minutes <= (intent.to ?? 24 * 60));
+  // Formato e idioma pedidos: «hay prime en Salaverry» devolvía la cartelera
+  // entera, como si no se hubiera dicho nada. Quien pregunta por PRIME o por
+  // subtituladas está decidiendo si va; listarle lo que no cumple es peor que
+  // decirle que no hay.
+  const delFormato = (s) =>
+    (!intent.formato || s.formats.includes(intent.formato.valor)) &&
+    (!intent.idioma || s.languages.includes(intent.idioma.valor));
+  const filtro = [intent.formato?.dice, intent.idioma?.dice].filter(Boolean).join(' ');
+  const tipo = filtro ? ` ${filtro}` : '';
 
   // Una sola pasada por la cartelera de la sede: de ahí salen todas las
   // respuestas posibles, y antes se recorría hasta tres veces.
@@ -872,7 +928,7 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
     const f = stillSellable(
       await showtimes({ movie: m, cinemaIds: [intent.cinema.id] }),
       today,
-    );
+    ).filter(delFormato);
     if (!f.length) continue;
     const hoy = f.filter((s) => s.date === dia);
     const proxima = f.filter((s) => s.date > dia).sort((a, b) => a.date.localeCompare(b.date))[0];
@@ -943,8 +999,10 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
       estado: 'cartelera',
       // Repetir la franja pedida es lo que deja ver si se entendió bien.
       pregunta: intent.genero
-        ? `${frase(intent.genero.dice)} en ${cine} ${cuando}${franja}:`
-        : `En ${cine} ${cuando}${franja} dan:`,
+        ? `${frase(intent.genero.dice)}${filtro ? ` (${filtro})` : ''} en ${cine} ${cuando}${franja}:`
+        : filtro
+          ? `Con ${filtro} en ${cine} ${cuando}${franja}:`
+          : `En ${cine} ${cuando}${franja} dan:`,
       opciones: listar(pedido),
       intent,
       contexto: recordar(intent),
@@ -959,7 +1017,7 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
       estado: 'cartelera',
       // La franja va pegada a lo que falta —"no hay funciones en la tarde"— y no
       // colgando al final de la frase, donde parece otra cosa.
-      pregunta: `No hay ${intent.genero ? intent.genero.nada : 'funciones'}${franja} en ${cine} ${cuandoTexto(
+      pregunta: `No hay ${intent.genero ? intent.genero.nada : 'funciones'}${tipo}${franja} en ${cine} ${cuandoTexto(
         dia,
         today,
       )}, pero sí a otras horas:`,
@@ -986,11 +1044,11 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
     const abre =
       dia === today
         ? intent.genero
-          ? `No hay ${intent.genero.nada} hoy${franjaUtil} en ${cine}`
-          : `Hoy ya no quedan funciones${franjaUtil} en ${cine}`
+          ? `No hay ${intent.genero.nada}${tipo} hoy${franjaUtil} en ${cine}`
+          : `Hoy ya no quedan funciones${tipo}${franjaUtil} en ${cine}`
         : `${frase(cuandoTexto(dia, today))} no hay ${
             intent.genero ? intent.genero.nada : 'funciones'
-          }${franjaUtil} en ${cine}`;
+          }${tipo}${franjaUtil} en ${cine}`;
     return {
       estado: 'cartelera',
       pregunta: `${abre}, pero ${sayDate(cuandoOtro, today)} sí:`,
@@ -1022,7 +1080,9 @@ async function carteleraDeLaSede({ intent, movieList, today }) {
   if (!intent.genero && !delDia.length) {
     return {
       estado: 'sin-cartelera',
-      mensaje: `${cine} no tiene funciones publicadas por ahora.`,
+      mensaje: filtro
+        ? `No hay funciones ${filtro} en ${cine} por ahora. ¿Pruebo en otro cine?`
+        : `${cine} no tiene funciones publicadas por ahora.`,
       intent,
       contexto: recordar(intent),
     };
@@ -1422,9 +1482,29 @@ async function caminoDeCompra(ctx) {
   if (agotadas) noUsado.push(agotadas === 1 ? 'la anterior estaba agotada' : `${agotadas} funciones antes estaban agotadas`);
   if (fresco.sobrantes.length) noUsado.push(`no entendí «${fresco.sobrantes.join(' ')}»`);
 
+  // Quería hoy y lo que se muestra es de otro día: puede que en otra sede sí
+  // quede algo esta misma noche, y eso cambia la decisión. Se dice.
+  let hoyEn = null;
+  if (elegida.date !== today && (intent.date == null || intent.date === today)) {
+    const origen = intent.cinema && Number.isFinite(intent.cinema.lat)
+      ? { lat: intent.cinema.lat, lon: intent.cinema.lon }
+      : intent.districtCoords;
+    const cerca = sedesConFuncionHoy({
+      funciones: await funcionesEnElPais(ctx),
+      cinemas: ctx.cinemaList,
+      origen,
+      hoy: today,
+      from: intent.from,
+      to: intent.to,
+      excluir: intent.cinema.id,
+    });
+    hoyEn = cerca.length ? cerca : null;
+  }
+
   return {
     estado: 'ok',
     ajuste,
+    hoyEn,
     noUsado: noUsado.length ? noUsado : null,
     heredado: heredado.length ? heredado : null,
     preferencias: {
@@ -1471,6 +1551,53 @@ async function caminoDeCompra(ctx) {
  */
 const conLoPreguntado = (r) => {
   if (r?.estado === 'elige-cine' && r.contexto) r.contexto.esperaba = 'lugar';
+  return r;
+};
+
+/** «1 h 43 min», que es como se dice. */
+const duracionTexto = (min) => {
+  const h = Math.floor(min / 60);
+  const m = min % 60;
+  return `${h ? `${h} h` : ''}${h && m ? ' ' : ''}${m ? `${m} min` : ''}`;
+};
+
+/**
+ * Responde lo que se preguntó de la película —duración, clasificación, trama—
+ * con lo que Cineplanet sí entrega, y dice lo que no. Antes «cuánto dura Coyote
+ * vs Acme» sólo preguntaba la ciudad, como si no se hubiera dicho nada. Va en
+ * `aparte`: la respuesta principal sigue su camino y esto se dice antes.
+ */
+function datosDeLaPelicula(pedidos, m) {
+  const partes = [];
+  const dura = m.runTime > 0 ? duracionTexto(m.runTime) : null;
+  if (pedidos.includes('duracion')) {
+    partes.push(dura ? `${m.title} dura ${dura}.` : `No tengo la duración de ${m.title}.`);
+  }
+  if (pedidos.includes('clasificacion')) {
+    const mayores = /^\+(\d+)$/.exec(m.rating ?? '');
+    partes.push(
+      m.rating === 'APT'
+        ? `${m.title} es apta para todo público.`
+        : mayores
+          ? `${m.title} es para mayores de ${mayores[1]} años.`
+          : m.rating
+            ? `La clasificación de ${m.title} es ${m.rating}.`
+            : `No tengo la clasificación de ${m.title}.`,
+    );
+  }
+  if (pedidos.includes('trama')) {
+    const sabe = [m.genre ? `es de ${m.genre.toLowerCase()}` : null, dura ? `dura ${dura}` : null].filter(Boolean);
+    partes.push(
+      `No tengo la sinopsis de ${m.title}: Cineplanet no la entrega.${sabe.length ? ` Sí sé que ${sabe.join(' y ')}.` : ''}`,
+    );
+  }
+  return partes.join(' ');
+}
+
+const terminar = (r, ctx) => {
+  conLoPreguntado(r);
+  const pedidos = ctx.fresco.pideDatos ?? [];
+  if (r && pedidos.length && ctx.intent.movie) r.aparte = datosDeLaPelicula(pedidos, ctx.intent.movie);
   return r;
 };
 
@@ -1549,10 +1676,10 @@ export async function resolve(text, { today = limaToday(), contexto = null, eleg
   for (const regla of REGLAS) {
     if (!(await regla.cuando(ctx))) continue;
     const respuesta = await regla.responde(ctx);
-    if (respuesta) return conLoPreguntado(respuesta);
+    if (respuesta) return terminar(respuesta, ctx);
   }
 
-  return conLoPreguntado(await caminoDeCompra(ctx));
+  return terminar(await caminoDeCompra(ctx), ctx);
 }
 
 /**

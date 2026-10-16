@@ -40,6 +40,11 @@ export const STOP = new Set(
     'pasado pasada semana finde fin trabajo chamba oficina clases ' +
     'temprano luego rato horario horarios funcion funciones franja ' +
     'primera segunda tercera ultima ultimo esa ese eso aquella aquel ' +
+    // La hora dicha en palabras y las muletillas: «ya son las 18 horas con 22
+    // minutos» se leía como «Godzilla Minus Zero» por «minutos».
+    'hora horas minuto minutos min hrs ya son sabes sabe refiero refieres refiere ' +
+    // Pedidos: «dime películas de…» no habla de una película llamada «dime».
+    'dime muestra muestrame mostrame ensename ' +
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
     // Posesivos: "mi" coincidía con "Mi Vecino Totoro" y con media cartelera.
     'mi mis tu tus su sus nuestro nuestra nuestros nuestras ' +
@@ -242,8 +247,12 @@ export const generoPorNombre = (dice) => GENEROS.find((g) => g.dice === dice) ??
 const GENEROS = [
   { pide: /\b(nin[oa]s?|infantil|familiar|en\s+familia|toda\s+la\s+familia|para\s+la\s+familia|mis\s+hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
   { pide: /\b(terror|miedo|susto|horror)\b/, generos: ['Terror'], dice: 'de terror', nada: 'nada de terror' },
-  { pide: /\b(accion|aventura)\b/, generos: ['Acción'], dice: 'de acción', nada: 'nada de acción' },
-  { pide: /\b(comedia|graciosa|risa|chistosa)\b/, generos: ['Comedia'], dice: 'de comedia', nada: 'ninguna comedia' },
+  // «Aventura» también es un género de Cineplanet: sin él, quien pedía aventura
+  // sólo recibía acción.
+  { pide: /\b(accion|aventura)\b/, generos: ['Acción', 'Aventura'], dice: 'de acción', nada: 'nada de acción' },
+  { pide: /\b(suspenso|thriller|intriga|misterio|policial)\b/, generos: ['Thriller', 'Suspenso'], dice: 'de suspenso', nada: 'nada de suspenso' },
+  { pide: /\b(ciencia\s+ficcion|ficcion|sci\s?fi|fantasia)\b/, generos: ['Ficción', 'Fantasía'], dice: 'de ciencia ficción o fantasía', nada: 'nada de ciencia ficción ni fantasía' },
+  { pide: /\b(comedia|graciosa|risa|chistos[ao]|divertid[ao]|reir|reirme|reirnos)\b/, generos: ['Comedia'], dice: 'de comedia', nada: 'ninguna comedia' },
   { pide: /\b(animad[ao]s?|dibujos|caricatura)\b/, generos: ['Animación'], dice: 'animada', nada: 'ninguna animada' },
   { pide: /\b(anime|japonesa)\b/, generos: ['Anime'], dice: 'anime', nada: 'nada de anime' },
   { pide: /\b(drama|dramatica)\b/, generos: ['Drama'], dice: 'de drama', nada: 'ningún drama' },
@@ -257,6 +266,7 @@ const GENEROS = [
 // la gente la dice, y si no hay funciones así se le avisa.
 const FORMATOS = [
   { pide: /\bprime\b/, valor: 'PRIME', dice: 'PRIME' },
+  { pide: /\b(xtreme|extreme)\b/, valor: 'XTREME', dice: 'XTREME' },
   { pide: /\b3\s?d\b/, valor: '3D', dice: '3D' },
   { pide: /\b2\s?d\b/, valor: '2D', dice: '2D' },
   { pide: /\bregular\b/, valor: 'REGULAR', dice: 'regular' },
@@ -358,7 +368,11 @@ function to24(hour, text, position) {
 }
 
 function parseTime(text) {
-  const t = norm(text);
+  // La hora se dice de muchas formas y todas son la misma: «18 horas con 22
+  // minutos» es 18:22. Se normaliza primero para que el resto no lo sepa.
+  const t = norm(text)
+    .replace(/\b(\d{1,2})\s*(?:horas?|hrs?)\s*(?:con|y)\s*(\d{1,2})\s*(?:minutos?|mins?)?\b/g, '$1:$2')
+    .replace(/\b(\d{1,2})\s*(?:horas|hrs)\b/g, '$1:00');
 
   // "entre 4 y 6", "de 5 a 7pm", "desde las 5 hasta las 7": la misma idea dicha
   // de tres maneras, y la gente usa las tres.
@@ -412,13 +426,30 @@ function parseTime(text) {
     };
   }
 
+  // «Ya son las 18:22»: quien lo dice cuenta qué hora es, y lo que pide es lo
+  // que queda desde entonces. Antes caía en «no entendí «18:22»».
+  const yaSon = /\b(?:ya\s+)?son\s+las?\s+(\d{1,2})(?::(\d{2}))?/.exec(t);
+  if (yaSon && +yaSon[1] <= 24) {
+    const minutos = to24(+yaSon[1], t, yaSon.index + yaSon[0].length) * 60 + (+yaSon[2] || 0);
+    const hh = String(Math.floor(minutos / 60)).padStart(2, '0');
+    const mm = String(minutos % 60).padStart(2, '0');
+    return { from: minutos, to: 24 * 60, said: `desde las ${hh}:${mm}` };
+  }
+
   const at = /\ba\s+las?\s+(\d{1,2})(?::(\d{2}))?/.exec(t);
   if (at) {
     if (+at[1] > 24) return { from: null, to: null, said: null, imposible: `las ${at[1]} no es una hora` };
     const end = at.index + at[0].length;
     const minutes = to24(+at[1], t, end) * 60 + (+at[2] || 0);
     // Una hora suelta se lee como "cerca de", no como exacta.
-    return { from: minutes - 45, to: minutes + 45, said: `cerca de las ${at[1]}` };
+    return { from: minutes - 45, to: minutes + 45, said: `cerca de las ${at[1]}${at[2] ? `:${at[2]}` : ''}` };
+  }
+
+  // «19:30» a secas: con dos puntos no puede ser otra cosa que una hora.
+  const suelta = /\b([01]?\d|2[0-3]):([0-5]\d)\b/.exec(t);
+  if (suelta) {
+    const minutos = +suelta[1] * 60 + +suelta[2];
+    return { from: minutos - 45, to: minutos + 45, said: `cerca de las ${suelta[1]}:${suelta[2]}` };
   }
 
   // Horas relativas: "más tarde" y "ahorita" se leen contra el reloj, no contra
@@ -429,6 +460,7 @@ function parseTime(text) {
   if (/\b(ahorita|ahora|ya mismo|lo antes posible)\b/.test(t)) {
     return { from: nowMinutesLima(), to: nowMinutesLima() + 180, said: 'ahora' };
   }
+  if (/\btemprano\b/.test(t)) return { from: 0, to: 14 * 60, said: 'temprano' };
   if (/\b(al\s+)?mediodia\b/.test(t)) return { from: 11 * 60, to: 14 * 60, said: 'al mediodía' };
   if (/\bmedianoche\b/.test(t)) return { from: 22 * 60, to: 24 * 60, said: 'a medianoche' };
   if (/\b(en|por)\s+la\s+manana\b/.test(t)) return { from: 0, to: 12 * 60, said: 'en la mañana' };
@@ -492,7 +524,7 @@ function acotarPersonas(n) {
 const comienzoDe = (q, w) => q.length >= 4 && w.length >= q.length + 3 && w.startsWith(q);
 
 /** Puntúa por tokens distintivos compartidos: "real plaza salaverry" → CP Salaverry. */
-function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {}) {
+function bestByTokens(text, candidates, label, { weak = null, minScore = 0, unica = false } = {}) {
   const list = tokens(text);
   const want = new Set(list);
   if (!want.size) return null;
@@ -575,6 +607,30 @@ function bestByTokens(text, candidates, label, { weak = null, minScore = 0 } = {
   // pista útil: "toi stori" se parece a Toy Story y merece una pregunta, no un
   // "no está en cartelera".
   if (scored[0].score < minScore) {
+    // Una palabra rara que está en **un solo** título lo nombra aunque sea una
+    // parte pequeña de él: «coyote» es una de las tres palabras de «Coyote vs
+    // Acme», puntúa poco, y se preguntaba «¿te refieres a…?» por la única
+    // película posible. Dos veces en la misma conversación. Hacen falta cinco
+    // letras, que no sea una palabra de todos los días y que ningún otro título
+    // la lleve: con eso nombrarla es nombrar la película.
+    if (unica) {
+      const esUnica = (w) =>
+        w.length >= 5 &&
+        !COMUNES.has(w) &&
+        candidates.filter((c) => tokens(label(c)).includes(w)).length === 1;
+      const nombrada = scored.find((s) => s.hits.some((w) => want.has(w) && esUnica(w)));
+      if (nombrada) {
+        return {
+          item: nombrada.item,
+          score: nombrada.score,
+          hits: nombrada.hits,
+          confianza: 'alta',
+          tied: [nombrada.item],
+          alternativas: [nombrada.item],
+          sugerencias: [],
+        };
+      }
+    }
     // Una pista construida sólo con palabras comunes no es una pista: "pero"
     // coincide exacto con "Separada pero nunca sola" y no significa nada.
     const utiles = scored.filter((s) => s.hits.some((w) => !COMUNES.has(w)));
@@ -759,6 +815,15 @@ const PAREJA = /\b(mi|con)\s+(novi[ao]|espos[ao]|pareja|enamorad[ao])\b/;
 const conPuntuacion = (s) =>
   (s ?? '').toLowerCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '');
 
+// Preguntas sobre la película misma. Cineplanet entrega su duración, su
+// clasificación y su género: se responden en vez de preguntar la ciudad como si
+// no se hubiera dicho nada. De la trama no entrega nada, y eso también se dice.
+const DATOS_PELICULA = [
+  ['duracion', /\b(cuanto\s+dura|cuanto\s+demora|duracion|cuanto\s+es\s+de\s+larga|que\s+tan\s+larga|cuantas?\s+horas?\s+dura)\b/],
+  ['clasificacion', /\b(clasificacion|que\s+edad|apta?\s+para|es\s+para\s+(?:ninos|menores|todo\s+publico)|puedo\s+llevar\s+(?:a\s+)?(?:mis\s+)?(?:ninos|hijos|menores))\b/],
+  ['trama', /\b(de\s+que\s+(?:trata|va|se\s+trata)|sinopsis|argumento)\b/],
+];
+
 // Qué butacas quedan: una pregunta sobre el mapa, no sobre la cartelera.
 // «No me queda claro qué asiento hay» recibía «no entendí» y la lista entera.
 const BUTACAS_LIBRES =
@@ -770,7 +835,7 @@ const SALUDO =
   /^(hola|holi|buenas|buenos\s+dias|buenas\s+tardes|buenas\s+noches|hey|ola|ola\s+k\s+ase|que\s+tal|saludos|alo)[\s!¡?¿.]*$/;
 // Cortesía y ruido: no es un saludo, y responder "Hola" a un "gracias" suena a
 // máquina que no escuchó.
-const CORTESIA = /^(gracias|graciass?|ok|oka|okey|listo|ya|bueno|perfecto|genial|(?:ja|je|ji|ha){2,}|a{3,}|\?+|\.+|x+)[\s!¡?¿.]*$/;
+const CORTESIA = /^(gracias|graciass?|chau|chao|adios|bye|hasta\s+luego|hasta\s+pronto|nos\s+vemos|ok|oka|okey|listo|ya|bueno|perfecto|genial|(?:ja|je|ji|ha){2,}|a{3,}|\?+|\.+|x+)[\s!¡?¿.]*$/;
 
 export function parse(text, { movies, cinemas, today = limaToday() }) {
   // Las abreviaturas se expanden primero: el resto del intérprete no tiene por
@@ -804,6 +869,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   const genero = GENEROS.find((g) => g.pide.test(norm(text))) ?? null;
   const formato = FORMATOS.find((f) => f.pide.test(norm(text))) ?? null;
   const idioma = IDIOMAS.find((i) => i.pide.test(norm(text))) ?? null;
+  const datosPedidos = DATOS_PELICULA.filter(([, re]) => re.test(norm(text)));
   // Lo que disparó el género ya está explicado: "niños" no es un título.
   const dichoGenero = genero ? (genero.pide.exec(norm(text))?.[0] ?? '') : '';
   const ciudadSinSede = Object.keys(CIUDADES_SIN_SEDE).find((c) =>
@@ -870,12 +936,20 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     // de miedo, y dejó de significar género cuando entró una película con esa
     // palabra en el título; «horror» y «familiar» se colaban por parecido.
     for (const w of tokens(dichoGenero)) used.add(w);
+    // Ni el formato o el idioma: «prime» está a una letra de «primer» y proponía
+    // «Hope el primer impacto» a quien preguntaba por la función PRIME.
+    for (const f of [formato, idioma]) {
+      if (f) for (const w of tokens(f.pide.exec(norm(text))?.[0] ?? '')) used.add(w);
+    }
+    // Ni lo que se pregunta de la película: «dura» no es parte de ningún título.
+    for (const [, re] of datosPedidos) for (const w of tokens(re.exec(norm(text))?.[0] ?? '')) used.add(w);
   }
   const rest = tokens(text)
     .filter(
       (w) =>
         !used.has(w) &&
         (numeroSuelto || !/^\d+$/.test(w)) &&
+        !/^\d{1,2}:\d{2}$/.test(w) &&
         !DAYS.includes(w) &&
         !MONTHS.includes(w),
     )
@@ -887,7 +961,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   const alias = porAlias(text, movies);
   const movieHit = alias
     ? { item: alias.item, confianza: 'alta', hits: tokens(alias.item.title) }
-    : bestByTokens(rest, movies, (m) => m.title, { minScore: 0.5 });
+    : bestByTokens(rest, movies, (m) => m.title, { minScore: 0.5, unica: true });
   const people = /\b(\d+)\s*(personas?|entradas?|boletos?|butacas?|asientos?)\b/.exec(norm(text));
   const worded = Object.entries(WORD_NUMBERS).find(([w]) =>
     new RegExp(`\\b${w}\\s+(personas?|entradas?|boletos?|butacas?|asientos?)\\b`).test(norm(text)),
@@ -901,6 +975,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     const usadas = new Set([
       ...(movieHit?.item ? tokens(movieHit.item.title) : []),
       ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
+      // «En español», «en inglés», «en 3D», «en xtreme»: lo que sigue a «en» es un
+      // idioma o un formato, no un lugar. Respondía «No ubico «español»».
+      ...[formato, idioma].flatMap((f) => (f ? tokens(f.pide.exec(norm(text))?.[0] ?? '') : [])),
+      ...tokens(dichoGenero),
+      ...datosPedidos.flatMap(([, re]) => tokens(re.exec(norm(text))?.[0] ?? '')),
     ]);
     const m = /\ben\s+(?:el\s+|la\s+|los\s+|las\s+)?([a-záéíóúñ]+(?:\s+[a-záéíóúñ]+)?)/i.exec(text);
     if (m) {
@@ -1019,6 +1098,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
       ? tokens(text).filter((w) => w.length >= 6 && tokens(movieHit.item.title).join('').includes(w))
       : []),
     ...(cinemaHit?.hits ?? []),
+    // «Real plaza», «Plaza», «Mall»: palabras de centro comercial. Solas no eligen
+    // sede —están en seis—, pero cuando la sede ya se reconoció por el resto del
+    // nombre ya están explicadas. Sin esto bajaban la certeza de la película y
+    // se preguntaba «¿te refieres a…?» por una que se había nombrado completa.
+    ...(cinemaHit?.item || district ? tokens(text).filter((w) => WEAK_VENUE.has(w)) : []),
     // Un cine nombrado con todas sus letras —«cp costanera»— que no existe
     // también está explicado: es un cine, sólo que no lo tenemos.
     ...(cineDesconocido ? tokens(cineDesconocido) : []),
@@ -1032,6 +1116,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(district ? tokens(district) : []),
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
     ...tokens(dichoGenero),
+    ...datosPedidos.flatMap(([, re]) => tokens(re.exec(norm(text))?.[0] ?? '')),
     ...(BUTACAS_PROPIAS.test(t) ? tokens(BUTACAS_PROPIAS.exec(t)?.[0] ?? '') : []),
     ...(BUTACAS_LIBRES.test(t) ? tokens(BUTACAS_LIBRES.exec(t)?.[0] ?? '') : []),
     ...(OTRA_PELICULA.test(t) ? tokens(OTRA_PELICULA.exec(t)?.[0] ?? '') : []),
@@ -1048,7 +1133,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(enGrupoVago ? tokens(EN_GRUPO_VAGO.exec(t2)?.[0] ?? '') : []),
     ...(solo ? ['solo', 'sola', 'ire', 'voy', 'yo', 'nomas', 'vengo', 'estoy'] : []),
     ...(pareja ? ['mi', 'con', 'novia', 'novio', 'esposa', 'esposo', 'pareja'] : []),
-    ...tokens(text).filter((w) => /^\d+$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
+    ...tokens(text).filter((w) => /^\d+$/.test(w) || /^\d{1,2}:\d{2}$/.test(w) || DAYS.includes(w) || MONTHS.includes(w)),
   ]);
   const sobrantes = tokens(text).filter((w) => !atribuidas.has(w) && w.length >= 4);
 
@@ -1118,6 +1203,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
             norm(text),
           )?.[0] ?? null),
     saludo: SALUDO.test(norm(text)) ? 'saludo' : CORTESIA.test(norm(text)) ? 'cortesia' : null,
+    despedida: /^(gracias|graciass?|chau|chao|adios|bye|hasta\s+luego|hasta\s+pronto|nos\s+vemos)[\s!¡?¿.]*$/.test(norm(text)),
     // Nombró una ciudad que sí tiene sedes. Sin esta distinción la respuesta
     // afirmaba "No hay Cineplanet en Lima", que es falso 27 veces.
     lugarConSede: !district && !ciudadSinSede && ciudadConSede ? ciudadConSede.sedes.length : 0,
@@ -1139,6 +1225,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
             (solo ? 1 : enGrupoVago ? null : acompanado || pareja ? 2 : null)),
     ),
     lugarDesconocido,
+    pideDatos: datosPedidos.map(([clave]) => clave),
     sobrantes,
     formato: formato ? { valor: formato.valor, dice: formato.dice } : null,
     idioma: idioma ? { valor: idioma.valor, dice: idioma.dice } : null,
