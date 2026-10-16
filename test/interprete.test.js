@@ -880,3 +880,66 @@ test('«temprano» es una franja: antes de media tarde', () => {
   assert.equal(r.from, 0);
   assert.ok(r.to >= 12 * 60 && r.to <= 16 * 60, `to=${r.to}`);
 });
+
+test('«a la mañana», «a la tarde» y «12 de la noche» son franjas, igual que «en la mañana»', () => {
+  // «quiero ir mañana a la mañana» se ignoraba: sólo se entendía «en la mañana».
+  assert.deepEqual([leerInv('quiero ir a la manana').from, leerInv('quiero ir a la manana').to], [0, 12 * 60]);
+  assert.equal(leerInv('una funcion a la tarde').from, 12 * 60);
+  assert.equal(leerInv('una funcion a la noche').from, 19 * 60);
+  const medianoche = leerInv('una funcion de las 12 de la noche');
+  assert.ok(medianoche.from >= 22 * 60 && medianoche.to === 24 * 60, `from=${medianoche.from} to=${medianoche.to}`);
+  const madrugada = leerInv('hay funciones de madrugada');
+  assert.ok(madrugada.to <= 6 * 60, `to=${madrugada.to}`);
+  assert.deepEqual(madrugada.sobrantes, [], 'madrugada es una franja, no una palabra suelta');
+});
+
+test('«con mi hijo» o «mi bebé» es pedir algo para niños', () => {
+  for (const f of ['peliculas para ver con mi hijo de 5 años', 'algo para mis sobrinos', 'que vea mi bebe']) {
+    assert.equal(leerInv(f).genero?.dice, 'para niños', f);
+  }
+});
+
+test('pedir otro horario se reconoce y no deja palabras sin explicar', () => {
+  const casos = [
+    ['mas tarde', 'despues'], ['una mas tarde', 'despues'], ['la siguiente', 'despues'], ['mas noche', 'despues'],
+    ['mas temprano', 'antes'],
+    ['otro horario', 'otra'], ['otra funcion', 'otra'], ['hay otra hora', 'otra'],
+  ];
+  for (const [f, sentido] of casos) {
+    const r = leerInv(f);
+    assert.equal(r.otraHora, sentido, f);
+    assert.deepEqual(r.sobrantes, [], `«${f}» dejó sin explicar: ${r.sobrantes}`);
+  }
+  // Y una hora normal no se confunde con eso.
+  assert.equal(leerInv('despues de las 8').otraHora, null);
+  assert.equal(leerInv('a las 9').otraHora, null);
+});
+
+test('«para 3» y «para tres» son cuántos van, no «Angry Birds 3»', () => {
+  // Del hilo de revisión: tras ver una función, «para 3» se leyó como el número
+  // de una saga y la conversación preguntó «¿te refieres a Angry Birds 3?».
+  const conSaga = [...sinInventados.filter((m) => !/angry birds 3/i.test(m.title)), { id: 'T-SAGA', title: 'Angry Birds 3 La Pelicula', slug: 'ab', cinemas: [] }];
+  for (const [f, n] of [['para 3', 3], ['para tres', 3], ['para 4', 4], ['somos 2', 2], ['para 6 personas', 6]]) {
+    const r = parse(f, { movies: conSaga, cinemas: cs });
+    assert.equal(r.seats, n, f);
+    assert.notEqual(r.movie?.id, 'T-SAGA', f);
+    assert.ok(!r.movieSugerencias.some((m) => m.id === 'T-SAGA'), `«${f}» propuso la saga`);
+    assert.deepEqual(r.sobrantes, [], f);
+  }
+  // Pero un número que no es de personas sigue siendo un número.
+  assert.equal(parse('para las 3 pm', { movies: conSaga, cinemas: cs }).seats, null);
+  // «para las 3 pm» es una hora, y como tal no puede proponer la saga.
+  const hora = parse('para las 3 pm', { movies: conSaga, cinemas: cs });
+  assert.ok(hora.from != null, 'no se entendió como hora');
+  assert.ok(!hora.movieSugerencias.some((m) => m.id === 'T-SAGA'), '«3» se leyó como el número de la saga');
+  assert.equal(parse('para el 3 de noviembre', { movies: conSaga, cinemas: cs }).seats, null);
+  assert.equal(parse('angry birds 3', { movies: conSaga, cinemas: cs }).movie?.id, 'T-SAGA');
+});
+
+test('«otra» sola, tras ver una película, pide otra película', () => {
+  for (const f of ['otra', 'no, otra', 'otra por favor', 'otra opcion', 'otras']) {
+    assert.equal(leerInv(f).otraPelicula, true, f);
+  }
+  // Pero «quiero otra entrada» o «otra hora» no.
+  assert.equal(leerInv('otra hora').otraPelicula, false);
+});

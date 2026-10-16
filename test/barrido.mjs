@@ -14,6 +14,7 @@
 //   inventa    afirmar que lo escrito es una película que no está
 //   cineAjeno  contestar con una función de una sede que no es la pedida
 //   colision   una frase común que un título nuevo convierte en «esa película»
+//   relativa   pedir «más tarde» tras ver una función y recibir la misma, o un callejón
 //
 // Y de paso revisa que los enlaces de compra correspondan a lo que dice la
 // tarjeta: película, sede, fecha, hora y sala.
@@ -24,7 +25,7 @@ import { parse, STOP, DISTRICTS, CIUDADES_SIN_SEDE } from '../src/parser.js';
 
 const PATRON = /^https:\/\/www\.cineplanet\.com\.pe\/compra\/([^/]+)\/(\d{10})\/(\d+)\/asientos$/;
 
-const hallazgos = { bucle: [], callejon: [], inventa: [], cineAjeno: [], colision: [], enlace: [], error: [] };
+const hallazgos = { bucle: [], callejon: [], inventa: [], cineAjeno: [], colision: [], relativa: [], enlace: [], error: [] };
 const dicho = (r) => r?.pregunta ?? r?.mensaje ?? (r?.pedido ? `→ ${r.pedido.pelicula}` : '');
 
 async function turno(texto, contexto, elegido) {
@@ -141,8 +142,39 @@ for (const f of new Set(frases)) {
   if (r.movie) hallazgos.colision.push([f, `eligió «${r.movie.title}» (${r.movieConfianza})`]);
 }
 
+// 4. Pedir otro horario. Tras ver una función, «más tarde» tiene que dar una
+//    posterior —nunca la misma— y, cuando ya no hay, decirlo con una salida.
+//    Se avanza hasta agotar el día, como haría una persona. Se recorren las
+//    primeras sedes: es una propiedad del mecanismo, no de cada sede.
+const horaDe = (r) => +r.funcion.hora.slice(0, 2) * 60 + +r.funcion.hora.slice(3, 5);
+let hilos = 0;
+for (const c of cinemaList.slice(0, 20)) {
+  const lista = await turno(`que dan hoy en ${c.name}`);
+  const op = lista?.opciones?.[0];
+  if (!op) continue;
+  let r = await turno(op.nombre, lista.contexto, op.peliculaId ? { peliculaId: op.peliculaId } : null);
+  if (r?.estado !== 'ok') continue;
+  hilos += 1;
+  const caso = `${c.name} → ${op.nombre}`;
+  let anterior = horaDe(r);
+  for (let i = 0; i < 12; i++) {
+    r = await turno('mas tarde', r.contexto);
+    if (!r) break;
+    if (r.estado !== 'ok') {
+      if (!(r.opciones?.length)) hallazgos.relativa.push([caso, `«más tarde» sin salida: ${dicho(r)}`]);
+      break;
+    }
+    const h = horaDe(r);
+    if (r.funcion.fecha === undefined || h <= anterior) {
+      hallazgos.relativa.push([caso, `«más tarde» repitió o retrocedió: ${anterior} → ${h}`]);
+      break;
+    }
+    anterior = h;
+  }
+}
+
 console.log(
-  `\n${cinemaList.length} sedes · ${conFunciones} películas con funciones · ${tarjetas} tarjetas armadas`,
+  `\n${cinemaList.length} sedes · ${conFunciones} películas con funciones · ${tarjetas} tarjetas armadas · ${hilos} hilos de «más tarde»`,
 );
 let total = 0;
 for (const [clase, lista] of Object.entries(hallazgos)) {

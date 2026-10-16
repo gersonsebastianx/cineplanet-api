@@ -42,7 +42,7 @@ export const STOP = new Set(
     'primera segunda tercera ultima ultimo esa ese eso aquella aquel ' +
     // La hora dicha en palabras y las muletillas: «ya son las 18 horas con 22
     // minutos» se leía como «Godzilla Minus Zero» por «minutos».
-    'hora horas minuto minutos min hrs ya son sabes sabe refiero refieres refiere ' +
+    'hora horas minuto minutos min hrs ya son sabes sabe refiero refieres refiere madrugada ' +
     // Pedidos: «dime películas de…» no habla de una película llamada «dime».
     'dime muestra muestrame mostrame ensename ' +
     'persona personas gente amigos amigas pareja novia novio esposa esposo hijos ' +
@@ -245,7 +245,7 @@ const PREGUNTA_PAIS =
 export const generoPorNombre = (dice) => GENEROS.find((g) => g.dice === dice) ?? null;
 
 const GENEROS = [
-  { pide: /\b(nin[oa]s?|infantil|familiar|en\s+familia|toda\s+la\s+familia|para\s+la\s+familia|mis\s+hijos)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
+  { pide: /\b(nin[oa]s?|infantil|familiar|en\s+familia|toda\s+la\s+familia|para\s+la\s+familia|mis\s+hijos|mi\s+hij[oa]|mis\s+sobrin[oa]s|mi\s+bebe)\b/, generos: ['Animación', 'Familiar'], apt: true, dice: 'para niños', nada: 'nada para niños' },
   { pide: /\b(terror|miedo|susto|horror)\b/, generos: ['Terror'], dice: 'de terror', nada: 'nada de terror' },
   // «Aventura» también es un género de Cineplanet: sin él, quien pedía aventura
   // sólo recibía acción.
@@ -436,7 +436,7 @@ function parseTime(text) {
     return { from: minutos, to: 24 * 60, said: `desde las ${hh}:${mm}` };
   }
 
-  const at = /\ba\s+las?\s+(\d{1,2})(?::(\d{2}))?/.exec(t);
+  const at = /\b(?:a|para)\s+las?\s+(\d{1,2})(?::(\d{2}))?/.exec(t);
   if (at) {
     if (+at[1] > 24) return { from: null, to: null, said: null, imposible: `las ${at[1]} no es una hora` };
     const end = at.index + at[0].length;
@@ -462,13 +462,14 @@ function parseTime(text) {
   }
   if (/\btemprano\b/.test(t)) return { from: 0, to: 14 * 60, said: 'temprano' };
   if (/\b(al\s+)?mediodia\b/.test(t)) return { from: 11 * 60, to: 14 * 60, said: 'al mediodía' };
-  if (/\bmedianoche\b/.test(t)) return { from: 22 * 60, to: 24 * 60, said: 'a medianoche' };
-  if (/\b(en|por)\s+la\s+manana\b/.test(t)) return { from: 0, to: 12 * 60, said: 'en la mañana' };
+  if (/\bmedianoche\b|\b12\s+de\s+la\s+noche\b/.test(t)) return { from: 22 * 60, to: 24 * 60, said: 'a medianoche' };
+  if (/\bmadrugada\b/.test(t)) return { from: 0, to: 5 * 60, said: 'de madrugada' };
+  if (/\b(en|por|a)\s+la\s+manana\b/.test(t)) return { from: 0, to: 12 * 60, said: 'en la mañana' };
   // "esta noche" no lleva artículo; exigirlo dejaba la frase sin franja horaria.
-  if (/\b(en|por|esta|de)\s+(la\s+)?tarde\b/.test(t)) {
+  if (/\b(en|por|a|esta|de)\s+(la\s+)?tarde\b/.test(t)) {
     return { from: 12 * 60, to: 19 * 60, said: 'en la tarde' };
   }
-  if (/\b(en|por|esta|de)\s+(la\s+)?noche\b/.test(t)) {
+  if (/\b(en|por|a|esta|de)\s+(la\s+)?noche\b/.test(t)) {
     return { from: 19 * 60, to: 24 * 60, said: 'en la noche' };
   }
   return { from: null, to: null, said: null };
@@ -797,7 +798,7 @@ const BUTACAS_PROPIAS =
 // Sin entenderlo, alguien con su tarjeta escribió «No, quiero otra película» y
 // recibió la misma tarjeta, dos veces.
 const OTRA_PELICULA =
-  /\b(otra|otras)\s+(pelicula|peli|cosa|opcion)s?\b|\bcambiar\s+(de\s+)?(pelicula|peli)\b|\b(esa|esta)\s+(pelicula|peli)\s+no\b/;
+  /\b(otra|otras)\s+(pelicula|peli|cosa|opcion)s?\b|\bcambiar\s+(de\s+)?(pelicula|peli)\b|\b(esa|esta)\s+(pelicula|peli)\s+no\b|^(no\s+)?(otra|otras)(\s+(por\s+favor|porfa|mas))?$/;
 // Pero la negación da vuelta el sentido: «no quiero otra película» es quedarse
 // con la misma.
 const NO_OTRA = /\bno\s+(quiero|busco|me\s+interesa|necesito)\s+(otra|otras)\b/;
@@ -822,6 +823,16 @@ const DATOS_PELICULA = [
   ['duracion', /\b(cuanto\s+dura|cuanto\s+demora|duracion|cuanto\s+es\s+de\s+larga|que\s+tan\s+larga|cuantas?\s+horas?\s+dura)\b/],
   ['clasificacion', /\b(clasificacion|que\s+edad|apta?\s+para|es\s+para\s+(?:ninos|menores|todo\s+publico)|puedo\s+llevar\s+(?:a\s+)?(?:mis\s+)?(?:ninos|hijos|menores))\b/],
   ['trama', /\b(de\s+que\s+(?:trata|va|se\s+trata)|sinopsis|argumento)\b/],
+];
+
+// Pedir otro horario después de ver una función. «Más tarde» se leía contra el
+// reloj, no contra lo que se acababa de mostrar, y devolvía la misma tarjeta:
+// había una de las 22:40 y se repetía la de las 20:30. Es relativo a la función
+// vista; si no hay ninguna vista, sigue valiendo lo de siempre.
+const OTRA_HORA = [
+  ['despues', /\b(mas\s+tarde|mas\s+noche|mas\s+tardecito|la\s+siguiente|siguiente\s+funcion|mas\s+adelante)\b/],
+  ['antes', /\b(mas\s+temprano|mas\s+tempranito)\b/],
+  ['otra', /\b(otro\s+horario|otra\s+hora|otra\s+funcion|otro\s+turno|hay\s+otra)\b/],
 ];
 
 // Qué butacas quedan: una pregunta sobre el mapa, no sobre la cartelera.
@@ -870,6 +881,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   const formato = FORMATOS.find((f) => f.pide.test(norm(text))) ?? null;
   const idioma = IDIOMAS.find((i) => i.pide.test(norm(text))) ?? null;
   const datosPedidos = DATOS_PELICULA.filter(([, re]) => re.test(norm(text)));
+  const otraHora = OTRA_HORA.find(([, re]) => re.test(norm(text))) ?? null;
+  const otroDia = /\b(otro\s+dia|dia\s+siguiente|otro\s+dia\s+que\s+no\s+sea\s+hoy)\b/.test(norm(text));
   // Lo que disparó el género ya está explicado: "niños" no es un título.
   const dichoGenero = genero ? (genero.pide.exec(norm(text))?.[0] ?? '') : '';
   const ciudadSinSede = Object.keys(CIUDADES_SIN_SEDE).find((c) =>
@@ -892,6 +905,11 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
 
   const { date, said: dateSaid, imposible: fechaImposible } = parseDate(text, today);
   const { from, to, said: timeSaid, imposible: horaImposible } = parseTime(text);
+  // «para 3», «para tres»: cuántos van, dicho sin la palabra «personas». Se leía
+  // como el número de una saga —«Angry Birds 3»— y la conversación se perdía.
+  // No vale si sigue una hora, una fecha o una unidad: «para las 3 pm», «para el
+  // 3 de noviembre».
+  const paraN = /\bpara\s+(\d{1,2}|dos|tres|cuatro|cinco|seis|siete|ocho)\b(?!\s*(?:pm|am|p\s?m|a\s?m|:|h\b|de\b|personas?|entradas?|boletos?|butacas?|asientos?))/.exec(norm(text));
 
   // Lo ya consumido por el cine, la fecha o la hora no debería competir por ser
   // película: si no, el "5" de "a las 5" gana contra "Toy Story 5".
@@ -901,6 +919,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
   // tirarlo dejaba las dos empatadas, preguntando «¿cuál de estas?» y
   // repitiendo la pregunta cada vez que se contestaba escribiendo el título.
   const hayCantidad =
+    !!paraN ||
     /\b\d+\s*(personas?|entradas?|boletos?|butacas?|asientos?)\b/.test(t) ||
     /\b(somos|vamos|seremos|iremos|seriamos)\s+\d{1,2}\b/.test(t);
   const numeroSuelto = date == null && from == null && to == null && !hayCantidad;
@@ -943,6 +962,8 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     }
     // Ni lo que se pregunta de la película: «dura» no es parte de ningún título.
     for (const [, re] of datosPedidos) for (const w of tokens(re.exec(norm(text))?.[0] ?? '')) used.add(w);
+    if (otroDia) for (const w of ['otro', 'dia']) used.add(w);
+    if (otraHora) for (const w of tokens(otraHora[1].exec(norm(text))?.[0] ?? '')) used.add(w);
   }
   const rest = tokens(text)
     .filter(
@@ -1117,6 +1138,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...(ciudadSinSede ? tokens(ciudadSinSede) : []),
     ...tokens(dichoGenero),
     ...datosPedidos.flatMap(([, re]) => tokens(re.exec(norm(text))?.[0] ?? '')),
+    ...(otraHora ? tokens(otraHora[1].exec(norm(text))?.[0] ?? '') : []),
     ...(BUTACAS_PROPIAS.test(t) ? tokens(BUTACAS_PROPIAS.exec(t)?.[0] ?? '') : []),
     ...(BUTACAS_LIBRES.test(t) ? tokens(BUTACAS_LIBRES.exec(t)?.[0] ?? '') : []),
     ...(OTRA_PELICULA.test(t) ? tokens(OTRA_PELICULA.exec(t)?.[0] ?? '') : []),
@@ -1127,6 +1149,7 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
     ...tokens(idioma ? (idioma.pide.exec(norm(text))?.[0] ?? '') : ''),
     // "somos 3" y "voy solo" dicen cuántos van: no son un título desconocido.
     ...tokens(grupo?.[0] ?? ''),
+    ...tokens(paraN?.[0] ?? ''),
     ...tokens(acompanado?.[0] ?? ''),
     ...(enGrupoVago ? ['amigos', 'amigas', 'hermanos', 'primos', 'hijos'] : []),
     // Lo dicho tal cual, para no dejar suelta «toda» en «con toda mi familia».
@@ -1221,11 +1244,15 @@ export function parse(text, { movies, cinemas, today = limaToday() }) {
         ? +people[1]
         : worded
           ? worded[1]
-          : (cuantosGrupo ??
+          : paraN
+            ? (WORD_NUMBERS[paraN[1]] ?? +paraN[1])
+            : (cuantosGrupo ??
             (solo ? 1 : enGrupoVago ? null : acompanado || pareja ? 2 : null)),
     ),
     lugarDesconocido,
     pideDatos: datosPedidos.map(([clave]) => clave),
+    otraHora: otraHora?.[0] ?? null,
+    otroDia,
     sobrantes,
     formato: formato ? { valor: formato.valor, dice: formato.dice } : null,
     idioma: idioma ? { valor: idioma.valor, dice: idioma.dice } : null,

@@ -70,3 +70,23 @@ export async function pedirPrimerDia(par) {
     elegido: { peliculaId: par.pelicula.id, cineId: par.sede.id },
   });
 }
+
+/** Una película y una sede reales con al menos `minimo` funciones el mismo día futuro. */
+export async function elegirDiaConVarias(minimo = 3) {
+  const { movies, cinemas, showtimes } = await import('../../src/catalog.js');
+  const { limaToday } = await import('../../src/parser.js');
+  const hoy = limaToday();
+  const [ms, cs] = [await movies(), await cinemas()];
+  for (const m of ms) {
+    const todas = (await showtimes({ movie: m })).filter((f) => f.date > hoy);
+    for (const [cineId, fs] of Map.groupBy(todas, (f) => f.cinemaId)) {
+      for (const [fecha, delDia] of Map.groupBy(fs, (f) => f.date)) {
+        const ordenadas = [...delDia].sort((a, b) => a.minutes - b.minutes);
+        if (ordenadas.length >= minimo) {
+          return { pelicula: m, sede: cs.find((c) => c.id === cineId), fecha, funciones: ordenadas };
+        }
+      }
+    }
+  }
+  return null;
+}

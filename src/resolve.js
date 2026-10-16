@@ -1210,6 +1210,47 @@ async function conLugarPara({ intent, movieList, today }, dia, asientos, { exclu
   return opciones;
 }
 
+const MESES = ['enero', 'febrero', 'marzo', 'abril', 'mayo', 'junio', 'julio', 'agosto', 'setiembre', 'octubre', 'noviembre', 'diciembre'];
+
+/**
+ * Pidió «más tarde» y la que vio ya es la última (o «más temprano» y es la
+ * primera). Repetirla es lo que hacía parecer sorda a la web; decirlo sin dar
+ * salida sería un callejón. Se ofrece lo que sigue: el día siguiente de esa
+ * película y las sedes cercanas donde todavía hay función hoy.
+ */
+async function sinOtraFuncion(ctx, vista, sentido, disponibles) {
+  const { intent, today } = ctx;
+  const hora = `${String(Math.floor(vista.min / 60)).padStart(2, '0')}:${String(vista.min % 60).padStart(2, '0')}`;
+  const opciones = [];
+  const siguiente = [...new Set(disponibles.filter((s) => s.date > vista.fecha).map((s) => s.date))].sort()[0];
+  if (siguiente) {
+    const d = new Date(`${siguiente}T12:00:00Z`);
+    const dicho = cuandoTexto(siguiente, today) === 'mañana' ? 'mañana' : `${d.getUTCDate()} de ${MESES[d.getUTCMonth()]}`;
+    opciones.push({ nombre: dicho });
+  }
+  if (vista.fecha === today) {
+    const cerca = sedesConFuncionHoy({
+      funciones: await funcionesEnElPais(ctx),
+      cinemas: ctx.cinemaList,
+      origen: intent.cinema && Number.isFinite(intent.cinema.lat) ? { lat: intent.cinema.lat, lon: intent.cinema.lon } : intent.districtCoords,
+      hoy: today,
+      excluir: intent.cinema.id,
+    });
+    for (const c of cerca) opciones.push({ id: c.id, nombre: c.nombre, detalle: `hoy ${c.hora}` });
+  }
+  const unica = disponibles.filter((s) => s.date === vista.fecha).length === 1;
+  const queEs = unica ? 'la única' : sentido === 'despues' ? 'la última' : 'la primera';
+  return {
+    estado: 'cartelera',
+    pregunta: `No hay ${unica ? 'otra función' : sentido === 'despues' ? 'una función más tarde' : 'una función más temprano'} de ${intent.movie.title} en ${intent.cinema.name} ${cuandoTexto(vista.fecha, today)}: la de las ${hora} es ${queEs}.${opciones.length ? ' Puedo buscarte en:' : ''}`,
+    opciones,
+    intent,
+    // La referencia se conserva: tras «no hay más tarde», «más temprano» tiene que
+    // seguir siendo relativo a esa misma función y no caer en lo de siempre.
+    contexto: { ...recordar(intent), horaMostrada: vista.min, fechaMostrada: vista.fecha },
+  };
+}
+
 /**
  * Hay película, hay sede y hay funciones: elegir cuál, mirar el mapa de butacas
  * y armar la respuesta con el botón de compra.
@@ -1278,6 +1319,46 @@ async function caminoDeCompra(ctx) {
       intent,
       contexto: recordar(intent),
     };
+  }
+
+  // «Más tarde», «más temprano», «otro horario»: relativos a la función que ya se
+  // vio, no al reloj. Se parte de ahí y nunca se vuelve a mostrar la misma.
+  let relativa = null;
+  const vista = contexto?.horaMostrada != null ? { min: contexto.horaMostrada, fecha: contexto.fechaMostrada } : null;
+  if (vista && fresco.otroDia) {
+    const siguiente = [...new Set(disponibles.filter((s) => s.date > vista.fecha).map((s) => s.date))].sort()[0];
+    if (!siguiente) {
+      return {
+        estado: 'cartelera',
+        pregunta: `${intent.movie.title} no tiene más días en ${intent.cinema.name}: ${cuandoTexto(vista.fecha, today)} es el último. ¿La busco en otro cine?`,
+        opciones: [{ nombre: 'Otro cine' }],
+        intent,
+        contexto: recordar(intent),
+      };
+    }
+    elegidas = disponibles.filter((s) => s.date === siguiente).sort((a, b) => a.minutes - b.minutes);
+    ajuste = null;
+    relativa = 'dia';
+    intent.from = null;
+    intent.to = null;
+    intent.said = { ...intent.said, time: null };
+  } else if (vista && fresco.otraHora) {
+    const delDia = disponibles.filter((s) => s.date === vista.fecha);
+    const despues = delDia.filter((s) => s.minutes > vista.min).sort((a, b) => a.minutes - b.minutes);
+    const antes = delDia.filter((s) => s.minutes < vista.min).sort((a, b) => b.minutes - a.minutes);
+    const sentido =
+      fresco.otraHora === 'despues' || (fresco.otraHora === 'otra' && despues.length) ? 'despues' : fresco.otraHora === 'antes' || antes.length ? 'antes' : 'despues';
+    const lista = sentido === 'despues' ? despues : antes;
+    if (!lista.length) return await sinOtraFuncion(ctx, vista, sentido, disponibles);
+    elegidas = lista;
+    ajuste = null;
+    relativa = sentido;
+    // La franja heredada o la que «temprano» pudo dejar ya no aplica: se pidió
+    // otra función relativa a la vista, y avisar «no hay funciones en esa
+    // franja» sería hablar de algo que nadie pidió.
+    intent.from = null;
+    intent.to = null;
+    intent.said = { ...intent.said, time: null };
   }
 
   const asientos = intent.seats ?? 2;
@@ -1504,6 +1585,7 @@ async function caminoDeCompra(ctx) {
   return {
     estado: 'ok',
     ajuste,
+    relativa,
     hoyEn,
     noUsado: noUsado.length ? noUsado : null,
     heredado: heredado.length ? heredado : null,
@@ -1512,7 +1594,9 @@ async function caminoDeCompra(ctx) {
       idioma: intent.idioma?.dice ?? null,
       respetadas: !cedido.length,
     },
-    contexto: recordar(intent),
+    // Se recuerda qué función se mostró: «más tarde» o «otro horario» son
+    // relativos a ella. Sin esto devolvían la misma tarjeta.
+    contexto: { ...recordar(intent), horaMostrada: elegida.minutes, fechaMostrada: elegida.date },
     // Se pregunta siempre que no lo haya dicho: una entrada o dos cambia por
     // completo qué butacas sirven, y adivinarlo mal se nota recién al pagar.
     preguntarGrupo: intent.seats == null && !!mapa,

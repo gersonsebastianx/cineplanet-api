@@ -665,6 +665,8 @@ function responder(r) {
     decir(`${p.pelicula} ${p.motivoDia} en ${p.cine}. La siguiente con lugar:`);
   } else if (r.ajuste === 'ultimo-dia') {
     decir(`${p.pelicula} ya no llega hasta ${p.fechaPedida ?? 'esa fecha'} en ${p.cine}. La última función:`);
+  } else if (r.relativa) {
+    decir(r.relativa === 'despues' ? 'Una más tarde:' : r.relativa === 'antes' ? 'Una más temprano:' : 'Otro día:');
   } else {
     decir('Encontré esto:');
   }
