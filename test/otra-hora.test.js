@@ -75,6 +75,10 @@ test('avanzando con «más tarde» se llega a la última, y ahí se dice y queda
   const d = r.pregunta ?? r.mensaje ?? '';
   assert.match(d, /última|única|ninguna más|no hay otra/i, d);
   assert.ok(r.opciones?.length, `sin salida: ${d}`);
+  // Aunque no haya día siguiente ni sedes cerca, siempre se puede cambiar de
+  // película o de cine: sin esto, CP Juliaca y CP Cajamarca quedaban en un callejón.
+  const nombres = r.opciones.map((o) => o.nombre);
+  assert.ok(nombres.includes('Otra película') && nombres.includes('Otro cine'), `faltan salidas fijas: ${nombres}`);
   // Y la última que se vio es la última de verdad.
   assert.equal(vistas.at(-1), caso.funciones.at(-1).minutes, 'se detuvo antes de la última función');
 });

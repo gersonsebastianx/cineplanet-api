@@ -1238,11 +1238,16 @@ async function sinOtraFuncion(ctx, vista, sentido, disponibles) {
     });
     for (const c of cerca) opciones.push({ id: c.id, nombre: c.nombre, detalle: `hoy ${c.hora}` });
   }
+  // Aunque no haya día siguiente ni sedes cerca (una sede lejana, una película
+  // que termina hoy), nunca se deja sin salida: siempre se puede cambiar de
+  // película o de cine. El barrido lo encontró en CP Juliaca y CP Cajamarca.
+  const conDestino = opciones.length > 0;
+  opciones.push({ nombre: 'Otra película' }, { nombre: 'Otro cine' });
   const unica = disponibles.filter((s) => s.date === vista.fecha).length === 1;
   const queEs = unica ? 'la única' : sentido === 'despues' ? 'la última' : 'la primera';
   return {
     estado: 'cartelera',
-    pregunta: `No hay ${unica ? 'otra función' : sentido === 'despues' ? 'una función más tarde' : 'una función más temprano'} de ${intent.movie.title} en ${intent.cinema.name} ${cuandoTexto(vista.fecha, today)}: la de las ${hora} es ${queEs}.${opciones.length ? ' Puedo buscarte en:' : ''}`,
+    pregunta: `No hay ${unica ? 'otra función' : sentido === 'despues' ? 'una función más tarde' : 'una función más temprano'} de ${intent.movie.title} en ${intent.cinema.name} ${cuandoTexto(vista.fecha, today)}: la de las ${hora} es ${queEs}.${conDestino ? ' Puedo buscarte en:' : ' ¿Qué prefieres?'}`,
     opciones,
     intent,
     // La referencia se conserva: tras «no hay más tarde», «más temprano» tiene que
